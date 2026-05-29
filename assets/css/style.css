@@ -1,0 +1,442 @@
+/* =========================================================
+   GLOBAL STYLES
+   ========================================================= */
+:root {
+  --bs-primary: #5fcf80;
+  --bs-primary-dark: #2ba650;
+  --bs-success: #27ae60;
+  --bs-warning: #e67e22;
+  --bs-danger: #dc3545;
+  --bs-light-bg: #f8f9fa;
+  --bs-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  --bs-radius: 12px;
+  --bs-font: "Poppins", sans-serif;
+}
+
+body {
+  font-family: var(--bs-font);
+  background: var(--bs-light-bg);
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+/* =========================================================
+     AUTH (LOGIN / REGISTER)
+     ========================================================= */
+
+.login-card {
+  background: #fff;
+  border-radius: var(--bs-border-radius-lg, 12px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 420px;
+  padding: 2.5rem;
+  text-align: center;
+}
+
+.login-card h2 {
+  font-weight: 700;
+  color: var(--bs-primary);
+  margin-bottom: 1.5rem;
+}
+
+.login-card label {
+  font-weight: 500;
+  display: block;
+  text-align: left;
+  margin-top: 1rem;
+  color: #333;
+}
+
+.login-card input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  margin-top: 0.4rem;
+  transition: all 0.3s ease;
+}
+
+.login-card input:focus {
+  border-color: var(--bs-primary);
+  box-shadow: 0 0 0 0.15rem rgba(13, 110, 253, 0.2);
+  outline: none;
+}
+
+.login-card button {
+  width: 100%;
+  background-color: #2ba650;
+  color: #fff;
+  border: none;
+  padding: 12px;
+  border-radius: 8px;
+  font-weight: 600;
+  margin-top: 1.5rem;
+  transition: all 0.3s;
+}
+
+.login-card button:hover {
+  background-color: #2ba650; /* darker shade for hover */
+}
+
+.login-card a {
+  color: var(--bs-primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.login-card a:hover {
+  text-decoration: underline;
+}
+
+/* =========================================================
+     SIDEBAR
+     ========================================================= */
+.sidebar {
+  width: 250px;
+  background-color: var(--bs-primary);
+  color: #fff;
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100%;
+  padding: 20px 0;
+  transition: all 0.3s ease;
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  z-index: 1000;
+}
+
+.sidebar.collapsed {
+  width: 70px;
+}
+
+.sidebar .brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 1.3rem;
+  margin-bottom: 30px;
+}
+
+.sidebar ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.sidebar ul li {
+  margin: 10px 0;
+}
+
+.sidebar ul li a {
+  display: flex;
+  align-items: center;
+  color: #fff;
+  text-decoration: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.sidebar ul li a:hover,
+.sidebar ul li a.active {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+.sidebar ul li a i {
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
+.sidebar.collapsed ul li a span {
+  display: none;
+}
+
+/* Sidebar toggle button */
+.toggle-btn {
+  position: absolute;
+  top: 20px;
+  right: -20px;
+  background: #fff;
+  color: #2ba650;
+  border-radius: 50%;
+  padding: 6px;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* =========================================================
+     MAIN CONTENT AREA
+     ========================================================= */
+.main-content {
+  margin-left: 250px;
+  padding: 30px;
+  transition: margin-left 0.3s ease;
+  min-height: 100vh;
+  background: var(--bs-light-bg);
+}
+
+.main-content.collapsed {
+  margin-left: 70px;
+}
+
+/* =========================================================
+     DASHBOARD / CARDS
+     ========================================================= */
+.dashboard-container {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.card {
+  border-radius: 1rem;
+  box-shadow: var(--bs-shadow);
+}
+
+/* =========================================================
+     MANAGE INSTRUCTORS
+     ========================================================= */
+.manage-container {
+  margin: 50px auto;
+  background: #fff;
+  border-radius: var(--bs-radius);
+  box-shadow: var(--bs-shadow);
+  padding: 30px;
+  max-width: 1100px;
+}
+
+.manage-container h2 {
+  color: #2ba650;
+  font-weight: 600;
+  margin-bottom: 25px;
+}
+
+.manage-container .table thead {
+  background: #004aad;
+  color: #fff;
+}
+
+.btn-approve {
+  background: var(--bs-success);
+  color: #fff;
+  border: none;
+  transition: 0.2s;
+}
+
+.btn-approve:hover {
+  background: #1f8d4e;
+}
+
+.status-pending {
+  color: var(--bs-warning);
+  font-weight: 600;
+}
+
+.status-approved {
+  color: var(--bs-success);
+  font-weight: 600;
+}
+
+/* =========================================================
+     UPLOAD COURSE PAGE
+     ========================================================= */
+.upload-container {
+  max-width: 700px;
+  margin: 50px auto;
+  background: #fff;
+  border-radius: var(--bs-radius);
+  padding: 40px 35px;
+  box-shadow: var(--bs-shadow);
+}
+
+.upload-container h2 {
+  color: #2ba650;
+  font-weight: 600;
+  margin-bottom: 25px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.upload-container form label {
+  font-weight: 500;
+  color: #333;
+  margin-top: 15px;
+}
+
+.upload-container input,
+.upload-container textarea,
+.upload-container select {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  margin-top: 5px;
+  background: #fdfdfd;
+  transition: 0.2s ease;
+}
+
+.upload-container input:focus,
+.upload-container textarea:focus,
+.upload-container select:focus {
+  border-color: var(--bs-primary);
+  box-shadow: 0 0 0 0.15rem rgba(2, 241, 117, 0.1);
+  outline: none;
+}
+
+.upload-container textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.upload-container button[type="submit"] {
+  background: var(--bs-primary);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 25px;
+  font-size: 16px;
+  font-weight: 500;
+  margin-top: 20px;
+  transition: 0.25s ease;
+}
+
+.upload-container button[type="submit"]:hover {
+  background: var(--bs-primary-dark);
+  cursor: pointer;
+}
+
+/* =========================================================
+     MY COURSES PAGE
+     ========================================================= */
+.courses-container {
+  margin: 50px auto;
+  background: #fff;
+  border-radius: var(--bs-radius);
+  box-shadow: var(--bs-shadow);
+  padding: 30px 35px;
+  max-width: 1100px;
+}
+
+.courses-container h2 {
+  color: #2ba650;
+  font-weight: 600;
+  margin-bottom: 25px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bs-primary);
+  color: #fff !important;
+  padding: 10px 18px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 500;
+  transition: 0.25s ease;
+  margin-bottom: 20px;
+}
+
+.upload-btn:hover {
+  background: var(--bs-primary-dark);
+  transform: translateY(-1px);
+}
+
+.courses-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.courses-table thead {
+  background: #004aad;
+  color: #fff;
+  text-align: left;
+}
+
+.courses-table th,
+.courses-table td {
+  padding: 12px 15px;
+  font-size: 15px;
+  border-bottom: 1px solid #eee;
+}
+
+.courses-table tbody tr:hover {
+  background: #f9fbff;
+}
+
+.courses-table td a {
+  color: var(--bs-primary);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.courses-table td a:hover {
+  text-decoration: underline;
+}
+
+/* Status badges */
+.price-status-approved {
+  color: var(--bs-success);
+  font-weight: 600;
+}
+
+.price-status-pending {
+  color: var(--bs-warning);
+  font-weight: 600;
+}
+
+.price-status-rejected {
+  color: var(--bs-danger);
+  font-weight: 600;
+}
+
+/* =========================================================
+     RESPONSIVE ADJUSTMENTS
+     ========================================================= */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 70px;
+  }
+
+  .sidebar.collapsed {
+    width: 250px;
+  }
+
+  .main-content {
+    margin-left: 70px;
+    padding: 20px;
+  }
+
+  .main-content.collapsed {
+    margin-left: 250px;
+  }
+
+  .toggle-btn {
+    position: absolute;
+    top: 20px;
+    right: -20px;
+    background: #fff;
+    border-radius: 50%;
+    padding: 6px;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  }
+
+  .courses-container,
+  .upload-container,
+  .manage-container {
+    padding: 20px;
+    margin: 20px;
+  }
+}
