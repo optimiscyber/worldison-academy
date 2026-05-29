@@ -1,0 +1,15 @@
+[08-Dec-2025 16:23:04 UTC] PHP Warning:  require_once(inc/db.php): Failed to open stream: No such file or directory in /home/worldxaz/academy.worldison.org/index.php on line 6
+[08-Dec-2025 16:23:04 UTC] PHP Fatal error:  Uncaught Error: Failed opening required 'inc/db.php' (include_path='.:/opt/alt/php81/usr/share/pear:/opt/alt/php81/usr/share/php:/usr/share/pear:/usr/share/php') in /home/worldxaz/academy.worldison.org/index.php:6
+Stack trace:
+#0 {main}
+  thrown in /home/worldxaz/academy.worldison.org/index.php on line 6
+[28-May-2026 12:42:06 Africa/Lagos] PHP Warning:  Undefined array key "category" in /home/worldxaz/public_html/academy/index.php on line 225
+[28-May-2026 13:31:12 Africa/Lagos] PHP Warning:  Undefined array key "category" in /home/worldxaz/public_html/academy/index.php on line 225
+[28-May-2026 14:26:27 Africa/Lagos] PHP Warning:  Undefined array key "category" in /home/worldxaz/public_html/academy/index.php on line 225
+[28-May-2026 14:37:49 Africa/Lagos] PHP Warning:  Undefined array key "category" in /home/worldxaz/public_html/academy/index.php on line 225
+[28-May-2026 14:39:52 Africa/Lagos] PHP Warning:  Undefined array key "category" in /home/worldxaz/public_html/academy/index.php on line 225
+[28-May-2026 20:14:28 Africa/Lagos] PHP Warning:  Undefined array key "category" in /home/worldxaz/public_html/academy/index.php on line 225
+[28-May-2026 21:12:40 Africa/Lagos] PHP Warning:  Undefined array key "category" in /home/worldxaz/public_html/academy/index.php on line 225
+[28-May-2026 21:12:41 Africa/Lagos] PHP Warning:  Undefined array key "category" in /home/worldxaz/public_html/academy/index.php on line 225
+[28-May-2026 21:49:24 Africa/Lagos] PHP Warning:  Undefined array key "category" in /home/worldxaz/public_html/academy/index.php on line 225
+[29-May-2026 04:11:14 Africa/Lagos] PHP Warning:  Undefined array key "category" in /home/worldxaz/public_html/academy/index.php on line 225

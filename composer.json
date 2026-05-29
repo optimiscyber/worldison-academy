@@ -1,0 +1,7 @@
+{
+  "require": {
+    "phpmailer/phpmailer": "^7.0",
+    "chillerlan/php-qrcode": "^2.0",
+    "mpdf/mpdf": "^8.2"
+  }
+}
