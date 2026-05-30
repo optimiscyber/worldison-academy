@@ -1,7 +1,8 @@
 <?php
-;session_start();
+if (session_status() === PHP_SESSION_NONE) session_start();
 require_once "inc/db.php";
 require_once "../inc/email.php";
+require_once __DIR__ . '/../inc/csrf.php';
 
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
@@ -18,18 +19,39 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
 // Handle profile update
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
     $name = trim($_POST['name']);
     $email = trim($_POST['email']);
     $bio = trim($_POST['bio']);
     $password = $_POST['password'] ?? '';
 
-    // File upload
+    // File upload - validate
     if (!empty($_FILES['profile_picture']['name'])) {
-        $ext = pathinfo($_FILES['profile_picture']['name'], PATHINFO_EXTENSION);
-        $fileName = "uploads/profile_" . $userId . "." . $ext;
-        move_uploaded_file($_FILES['profile_picture']['tmp_name'], $fileName);
+        $file = $_FILES['profile_picture'];
+        if ($file['error'] === UPLOAD_ERR_OK && $file['size'] <= 3 * 1024 * 1024) {
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mime = finfo_file($finfo, $file['tmp_name']);
+            finfo_close($finfo);
+            $allowed = ['image/jpeg','image/png','image/webp'];
+            $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            $blocked = ['php','phtml','phar','js','exe','sh'];
+            if (in_array($mime, $allowed) && !in_array($ext, $blocked)) {
+                $dir = __DIR__ . '/../assets/uploads/profiles/';
+                if (!is_dir($dir)) mkdir($dir, 0755, true);
+                $fileName = $dir . bin2hex(random_bytes(8)) . '.' . $ext;
+                if (move_uploaded_file($file['tmp_name'], $fileName)) {
+                    $webFile = '../assets/uploads/profiles/' . basename($fileName);
+                } else {
+                    $webFile = $user['profile_picture'];
+                }
+            } else {
+                $webFile = $user['profile_picture'];
+            }
+        } else {
+            $webFile = $user['profile_picture'];
+        }
     } else {
-        $fileName = $user['profile_picture'];
+        $webFile = $user['profile_picture'];
     }
 
     // Password hash if changed
@@ -41,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Update DB
     $stmt = $pdo->prepare("UPDATE users SET name=?, email=?, password=?, bio=?, profile_picture=? WHERE id=?");
-    $stmt->execute([$name, $email, $hash, $bio, $fileName, $userId]);
+    $stmt->execute([$name, $email, $hash, $bio, $webFile, $userId]);
 
     $msg = "Profile updated successfully!";
     // Refresh data
@@ -74,6 +96,7 @@ include "inc/navbar.php";
     <?php endif; ?>
 
     <form method="POST" enctype="multipart/form-data">
+        <?php echo csrf_input(); ?>
         <div class="mb-3">
             <label>Name</label>
             <input type="text" name="name" class="form-control" value="<?= htmlspecialchars($user['name']) ?>" required>

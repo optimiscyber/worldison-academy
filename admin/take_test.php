@@ -1,6 +1,7 @@
 <?php
 require_once "inc/db.php";
 require_once "../inc/auth.php";
+require_once __DIR__ . '/../inc/csrf.php';
 
 $user_id = $_SESSION['user_id'] ?? 0;
 $lesson_id = intval($_GET['lesson_id'] ?? 0);
@@ -21,6 +22,7 @@ $tests = $tests_stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // *** SUBMIT TEST ***
 if($_SERVER['REQUEST_METHOD']==='POST') {
+    csrf_verify();
 
     $answers = [];
     $score = 0;
@@ -94,6 +96,7 @@ if($_SERVER['REQUEST_METHOD']==='POST') {
     <div class="alert alert-warning">No test available for this lesson.</div>
 <?php else: ?>
 <form method="POST">
+    <?php echo csrf_input(); ?>
 
 <?php foreach($tests as $q): 
         $answers = json_decode($q['answers'],true);

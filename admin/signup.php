@@ -3,10 +3,13 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 require_once "inc/db.php";
 require_once "../inc/auth.php";
+require_once __DIR__ . '/../inc/csrf.php';
 
-// If already logged in, block access
-if (isset($_SESSION['user_id'])) {
-    header("Location: dashboard.php");
+// Only existing admin/CEO users can create new admin/CEO accounts
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['admin','ceo'])) {
+    // block public access
+    http_response_code(403);
+    echo "Access denied.";
     exit;
 }
 
@@ -78,6 +81,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 <?php endif; ?>
 
                 <form method="POST">
+                    <?php echo csrf_input(); ?>
 
                     <!-- Full Name -->
                     <div class="form-floating mb-3">

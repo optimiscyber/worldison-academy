@@ -31,6 +31,10 @@
   justify-content: center;
 }
 </style>
+<?php
+if (session_status() === PHP_SESSION_NONE) session_start();
+require_once __DIR__ . '/inc/csrf.php';
+?>
 </head>
 
 <body class="auth">
@@ -43,6 +47,7 @@
 
     <form action="inc/auth.php" method="POST">
       <input type="hidden" name="action" value="login">
+      <?php echo csrf_input(); ?>
 
       <label for="email">Email</label>
       <input type="email" id="email" name="email" placeholder="Enter your email" required>

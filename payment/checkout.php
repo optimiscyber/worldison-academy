@@ -45,6 +45,7 @@ $user = $user_stmt->fetch(PDO::FETCH_ASSOC);
 <div class="main-content" id="mainContent">
   <div class="container mt-5">
     <form method="POST" action="process_payment.php">
+      <?php require_once __DIR__ . '/../inc/csrf.php'; echo csrf_input(); ?>
       <div class="row g-4">
         <!-- Billing Information -->
         <div class="col-lg-7">
@@ -86,7 +87,6 @@ $user = $user_stmt->fetch(PDO::FETCH_ASSOC);
               <label for="payment_method" class="form-label">Payment Method</label>
               <select class="form-control" id="payment_method" name="payment_method" required>
                 <option value="paystack">Paystack</option>
-                <option value="DefiGate">DeFiGate (crypto)</option>
                 <option value="manual">Manual Transfer</option>
               </select>
             </div>

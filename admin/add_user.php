@@ -2,6 +2,7 @@
 session_start();
 require_once __DIR__ . '/inc/db.php';
 require_once __DIR__ . '/../inc/email.php'; // include your email function
+require_once __DIR__ . '/../inc/csrf.php';
 
 // Only CEO can access
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'ceo') {
@@ -18,6 +19,7 @@ $errors = [];
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
     // sanitize input
     $name = trim($_POST['name']);
     $email = trim($_POST['email']);
@@ -90,6 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
 
         <form method="POST" class="row g-3">
+            <?php echo csrf_input(); ?>
             <div class="col-md-6">
                 <label for="name" class="form-label">Full Name</label>
                 <input type="text" name="name" id="name" class="form-control" value="<?= htmlspecialchars($name ?? '') ?>" required>

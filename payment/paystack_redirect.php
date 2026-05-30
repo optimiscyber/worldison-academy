@@ -1,8 +1,11 @@
 <?php
+require_once "../inc/env.php";
 require_once "../inc/db.php";
 session_start();
 
-$ref = $_GET['ref'];
+$ref = $_GET['ref'] ?? '';
+
+if (!$ref) { http_response_code(400); exit('Invalid reference'); }
 
 $stmt = $pdo->prepare("SELECT p.*, u.email FROM payments p 
                        JOIN users u ON p.user_id = u.id 
@@ -10,9 +13,13 @@ $stmt = $pdo->prepare("SELECT p.*, u.email FROM payments p
 $stmt->execute([$ref]);
 $pay = $stmt->fetch();
 
-if (!$pay) { die("Invalid reference"); }
+if (!$pay) { http_response_code(404); exit('Invalid reference'); }
 
-$secret_key = "sk_test_e0666cb19dc21cd91d16f6b02b7adeabd8f02d1b";
+// Server-side validate amount and reference uniqueness
+if (!is_numeric($pay['amount']) || $pay['amount'] <= 0) { http_response_code(400); exit('Invalid payment amount'); }
+
+$secret_key = getenv('PAYSTACK_SECRET') ?: ''; 
+if (!$secret_key) { error_log('Paystack secret not configured'); http_response_code(500); exit('Payment provider misconfigured'); }
 
 $curl = curl_init();
 curl_setopt_array($curl, [
@@ -23,7 +30,7 @@ curl_setopt_array($curl, [
       "email" => $pay['email'],
       "amount" => $pay['amount'] * 100, 
       "reference" => $ref,
-      "callback_url" => "https://academy.worldison.org//payment/paystack_callback.php"
+      "callback_url" => (getenv('PAYSTACK_CALLBACK') ?: "")
   ]),
   CURLOPT_HTTPHEADER => [
     "Authorization: Bearer $secret_key",
@@ -35,6 +42,7 @@ $response = curl_exec($curl);
 curl_close($curl);
 
 $data = json_decode($response, true);
+if (empty($data['status']) || !$data['status']) { error_log('Paystack init failed: ' . $response); exit('Payment initialization failed'); }
 
 header("Location: " . $data['data']['authorization_url']);
 exit;

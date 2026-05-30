@@ -4,6 +4,7 @@ error_reporting(E_ALL);
 ini_set('display_errors',1);
 session_start();
 require_once __DIR__ . '/inc/db.php';
+require_once __DIR__ . '/../inc/csrf.php';
 
 if (!isset($_SESSION['user_id'])) die('Access denied');
 $role = $_SESSION['role'] ?? '';
@@ -13,6 +14,7 @@ $lesson_id = intval($_GET['lesson_id'] ?? 0);
 if (!$lesson_id) die('Missing lesson id');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+  csrf_verify();
     $question = trim($_POST['question'] ?? '');
     $answers = array_map('trim', [$_POST['a'] ?? '', $_POST['b'] ?? '', $_POST['c'] ?? '', $_POST['d'] ?? '']);
     $correct = intval($_POST['correct'] ?? 0);
@@ -42,6 +44,7 @@ include __DIR__ . '/inc/navbar.php';
   <?php if(!empty($error)): ?><div class="alert alert-danger"><?=htmlspecialchars($error)?></div><?php endif;?>
   <?php if(!empty($success)): ?><div class="alert alert-success"><?=htmlspecialchars($success)?></div><?php endif;?>
   <form method="POST">
+    <?php echo csrf_input(); ?>
     <div class="mb-3">
       <label class="form-label">Question</label>
       <textarea name="question" class="form-control" rows="3" required></textarea>

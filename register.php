@@ -126,8 +126,13 @@
     <h2>Create an Account</h2>
     <p class="text-muted mb-3">Join as a Student or Instructor</p>
 
+    <?php
+    if (session_status() === PHP_SESSION_NONE) session_start();
+    require_once __DIR__ . '/inc/csrf.php';
+    ?>
     <form action="inc/auth.php" method="POST">
       <input type="hidden" name="action" value="register">
+      <?php echo csrf_input(); ?>
 
       <label for="name">Full Name</label>
       <input type="text" id="name" name="name" placeholder="Enter your full name" required>

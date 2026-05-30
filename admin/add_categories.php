@@ -3,6 +3,7 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 session_start();
 require_once "inc/db.php";
+require_once __DIR__ . '/../inc/csrf.php';
 
 // Restrict access
 if (!isset($_SESSION['role']) || !in_array($_SESSION['role'], ['admin', 'ceo'])) {
@@ -11,7 +12,8 @@ if (!isset($_SESSION['role']) || !in_array($_SESSION['role'], ['admin', 'ceo']))
 
 // Handle form submission (Add Category)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['category_name'])) {
-    $name = trim($_POST['category_name']);
+  csrf_verify();
+  $name = trim($_POST['category_name']);
     if ($name !== '') {
         // Prevent duplicate
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM categories WHERE name=?");
@@ -74,6 +76,7 @@ include __DIR__ . '/inc/navbar.php';
               <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
             <?php endif; ?>
             <form method="POST">
+              <?php echo csrf_input(); ?>
               <div class="mb-3">
                 <label for="category_name" class="form-label">Category Name</label>
                 <input type="text" name="category_name" id="category_name" class="form-control" required>

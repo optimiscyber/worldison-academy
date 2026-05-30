@@ -4,6 +4,7 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 session_start();
 require_once __DIR__ . '/inc/db.php';
+require_once __DIR__ . '/../inc/csrf.php';
 
 // Allowed roles
 $allowed = ['instructor','admin','ceo'];
@@ -19,6 +20,8 @@ $errors = [];
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+  // verify CSRF token
+  csrf_verify();
 
     // Main course data
     $title = trim($_POST['title'] ?? '');
@@ -29,20 +32,86 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($title === '') $errors[] = "Course title is required";
 
-    // Upload Thumbnail
+    // Upload Thumbnail (validate MIME, extension and size)
     $thumbnail = null;
     if (!empty($_FILES['thumbnail']['name'])) {
-        $upDir = __DIR__ . '/../assets/uploads/thumbnails/';
-        if (!is_dir($upDir)) mkdir($upDir, 0777, true);
+      $upDir = __DIR__ . '/../assets/uploads/thumbnails/';
+      if (!is_dir($upDir)) mkdir($upDir, 0755, true);
 
-        $fname = time() . '_' . preg_replace('/[^a-zA-Z0-9\-_\.]/','', basename($_FILES['thumbnail']['name']));
-        $target = $upDir . $fname;
+      $img = $_FILES['thumbnail'];
+      if ($img['error'] !== UPLOAD_ERR_OK) {
+        $errors[] = 'Thumbnail upload error.';
+            /*
+             -------------------------------
+             ATTACHMENT FILE HANDLING
+             -------------------------------
+            */
+            if (!empty($_FILES['lesson_attachments']['name'][$o_index][$l_index])) {
 
-        if (move_uploaded_file($_FILES['thumbnail']['tmp_name'], $target)) {
-            $thumbnail = '../assets/uploads/thumbnails/' . $fname;
-        } else {
-            $errors[] = "Thumbnail upload failed.";
-        }
+              $attDir = __DIR__ . '/../assets/uploads/attachments/';
+              if (!is_dir($attDir)) mkdir($attDir, 0755, true);
+
+              $attachFile = [
+                'name' => $_FILES['lesson_attachments']['name'][$o_index][$l_index],
+                'tmp_name' => $_FILES['lesson_attachments']['tmp_name'][$o_index][$l_index],
+                'error' => $_FILES['lesson_attachments']['error'][$o_index][$l_index],
+                'size' => $_FILES['lesson_attachments']['size'][$o_index][$l_index]
+              ];
+
+              if ($attachFile['error'] === UPLOAD_ERR_OK && $attachFile['size'] <= 50 * 1024 * 1024) {
+                $finfo = finfo_open(FILEINFO_MIME_TYPE);
+                $mime = finfo_file($finfo, $attachFile['tmp_name']);
+                finfo_close($finfo);
+                $allowedAtt = ['application/pdf','application/zip','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','video/mp4','application/octet-stream'];
+                $ext = strtolower(pathinfo($attachFile['name'], PATHINFO_EXTENSION));
+                $blocked = ['php','phtml','phar','js','exe','sh'];
+                if (!in_array($ext, $blocked) && in_array($mime, $allowedAtt)) {
+                  $safe = bin2hex(random_bytes(8)) . '.' . $ext;
+                  $dest = $attDir . $safe;
+                  if (move_uploaded_file($attachFile['tmp_name'], $dest)) {
+                    // Insert into lesson_attachments table
+                    $insAtt = $pdo->prepare("INSERT INTO lesson_attachments (lesson_id, file_url) VALUES (?, ?)");
+                    $insAtt->execute([
+                      $lesson_id,
+                      '../assets/uploads/attachments/' . $safe
+                    ]);
+                  }
+                }
+              }
+            }
+
+              $attDir = __DIR__ . '/../assets/uploads/attachments/';
+              if (!is_dir($attDir)) mkdir($attDir, 0755, true);
+
+              $attachFile = [
+                'name' => $_FILES['lesson_attachments']['name'][$o_index][$l_index],
+                'tmp_name' => $_FILES['lesson_attachments']['tmp_name'][$o_index][$l_index],
+                'error' => $_FILES['lesson_attachments']['error'][$o_index][$l_index],
+                'size' => $_FILES['lesson_attachments']['size'][$o_index][$l_index]
+              ];
+
+              if ($attachFile['error'] === UPLOAD_ERR_OK && $attachFile['size'] <= 50 * 1024 * 1024) {
+                $finfo = finfo_open(FILEINFO_MIME_TYPE);
+                $mime = finfo_file($finfo, $attachFile['tmp_name']);
+                finfo_close($finfo);
+                $allowedAtt = ['application/pdf','application/zip','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','video/mp4','application/octet-stream'];
+                $ext = strtolower(pathinfo($attachFile['name'], PATHINFO_EXTENSION));
+                $blocked = ['php','phtml','phar','js','exe','sh'];
+                if (!in_array($ext, $blocked) && in_array($mime, $allowedAtt)) {
+                  $safe = bin2hex(random_bytes(8)) . '.' . $ext;
+                  $dest = $attDir . $safe;
+                  if (move_uploaded_file($attachFile['tmp_name'], $dest)) {
+                    // Insert into lesson_attachments table
+                    $insAtt = $pdo->prepare("INSERT INTO lesson_attachments (lesson_id, file_url) VALUES (?, ?)");
+                    $insAtt->execute([
+                      $lesson_id,
+                      '../assets/uploads/attachments/' . $safe
+                    ]);
+                  }
+                }
+              }
+            }
+      }
     }
 
     if (empty($errors)) {
@@ -99,17 +168,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                         // Uploaded File
                         if (!empty($_FILES['lesson_videos']['name'][$o_index][$l_index])) {
-                            $mediaDir = __DIR__ . '/../assets/uploads/media/';
-                            if (!is_dir($mediaDir)) mkdir($mediaDir, 0777, true);
+                          $mediaDir = __DIR__ . '/../assets/uploads/media/';
+                          if (!is_dir($mediaDir)) mkdir($mediaDir, 0755, true);
 
-                            $original = $_FILES['lesson_videos']['name'][$o_index][$l_index];
-                            $safe = time() . "_" . preg_replace('/[^a-zA-Z0-9\-_\.]/','', basename($original));
-                            $tmp  = $_FILES['lesson_videos']['tmp_name'][$o_index][$l_index];
-                            $dest = $mediaDir . $safe;
+                          $videoFile = [
+                            'name' => $_FILES['lesson_videos']['name'][$o_index][$l_index],
+                            'tmp_name' => $_FILES['lesson_videos']['tmp_name'][$o_index][$l_index],
+                            'error' => $_FILES['lesson_videos']['error'][$o_index][$l_index],
+                            'size' => $_FILES['lesson_videos']['size'][$o_index][$l_index]
+                          ];
 
-                            if (move_uploaded_file($tmp, $dest)) {
+                          if ($videoFile['error'] === UPLOAD_ERR_OK && $videoFile['size'] <= 200 * 1024 * 1024) {
+                            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+                            $mime = finfo_file($finfo, $videoFile['tmp_name']);
+                            finfo_close($finfo);
+                            $allowedVideo = ['video/mp4','video/webm','video/ogg','application/octet-stream'];
+                            $ext = strtolower(pathinfo($videoFile['name'], PATHINFO_EXTENSION));
+                            $blocked = ['php','phtml','phar','js','exe','sh'];
+                            if (!in_array($ext, $blocked) && in_array($mime, $allowedVideo)) {
+                              $safe = bin2hex(random_bytes(8)) . '.' . $ext;
+                              $dest = $mediaDir . $safe;
+                              if (move_uploaded_file($videoFile['tmp_name'], $dest)) {
                                 $final_video_url = '../assets/uploads/media/' . $safe;
+                              }
                             }
+                          }
                         }
                         // YouTube or External URL
                         elseif (!empty($youtube_url)) {
@@ -249,6 +332,7 @@ include __DIR__ . '/inc/navbar.php';
     <?php endif; ?>
 
     <form method="POST" enctype="multipart/form-data" id="courseForm">
+      <?php echo csrf_input(); ?>
       <div class="card mb-3 p-3">
         <div class="row g-3">
           <div class="col-md-6">

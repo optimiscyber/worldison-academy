@@ -1,13 +1,14 @@
 <?php
+require_once "../inc/env.php";
 require_once "../inc/db.php";
-require_once "../config/paystack_config.php";  // <-- Add this
+require_once "../inc/paystack_config.php";
 
 $ref = $_GET['reference'];
 
 // Verify with Paystack
 $curl = curl_init();
 curl_setopt_array($curl, [
-  CURLOPT_URL => PAYSTACK_BASE_URL . "/transaction/verify/$ref",
+  CURLOPT_URL => PAYSTACK_BASE_URL . "/transaction/verify/" . rawurlencode($ref),
   CURLOPT_RETURNTRANSFER => true,
   CURLOPT_HTTPHEADER => [
       "Authorization: Bearer " . PAYSTACK_SECRET_KEY
