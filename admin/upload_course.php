@@ -35,83 +35,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Upload Thumbnail (validate MIME, extension and size)
     $thumbnail = null;
     if (!empty($_FILES['thumbnail']['name'])) {
-      $upDir = __DIR__ . '/../assets/uploads/thumbnails/';
-      if (!is_dir($upDir)) mkdir($upDir, 0755, true);
-
-      $img = $_FILES['thumbnail'];
-      if ($img['error'] !== UPLOAD_ERR_OK) {
-        $errors[] = 'Thumbnail upload error.';
-            /*
-             -------------------------------
-             ATTACHMENT FILE HANDLING
-             -------------------------------
-            */
-            if (!empty($_FILES['lesson_attachments']['name'][$o_index][$l_index])) {
-
-              $attDir = __DIR__ . '/../assets/uploads/attachments/';
-              if (!is_dir($attDir)) mkdir($attDir, 0755, true);
-
-              $attachFile = [
-                'name' => $_FILES['lesson_attachments']['name'][$o_index][$l_index],
-                'tmp_name' => $_FILES['lesson_attachments']['tmp_name'][$o_index][$l_index],
-                'error' => $_FILES['lesson_attachments']['error'][$o_index][$l_index],
-                'size' => $_FILES['lesson_attachments']['size'][$o_index][$l_index]
-              ];
-
-              if ($attachFile['error'] === UPLOAD_ERR_OK && $attachFile['size'] <= 50 * 1024 * 1024) {
-                $finfo = finfo_open(FILEINFO_MIME_TYPE);
-                $mime = finfo_file($finfo, $attachFile['tmp_name']);
-                finfo_close($finfo);
-                $allowedAtt = ['application/pdf','application/zip','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','video/mp4','application/octet-stream'];
-                $ext = strtolower(pathinfo($attachFile['name'], PATHINFO_EXTENSION));
-                $blocked = ['php','phtml','phar','js','exe','sh'];
-                if (!in_array($ext, $blocked) && in_array($mime, $allowedAtt)) {
-                  $safe = bin2hex(random_bytes(8)) . '.' . $ext;
-                  $dest = $attDir . $safe;
-                  if (move_uploaded_file($attachFile['tmp_name'], $dest)) {
-                    // Insert into lesson_attachments table
-                    $insAtt = $pdo->prepare("INSERT INTO lesson_attachments (lesson_id, file_url) VALUES (?, ?)");
-                    $insAtt->execute([
-                      $lesson_id,
-                      '../assets/uploads/attachments/' . $safe
-                    ]);
-                  }
+        $img = $_FILES['thumbnail'];
+        if ($img['error'] === UPLOAD_ERR_OK && $img['size'] <= 5 * 1024 * 1024) {
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mime = finfo_file($finfo, $img['tmp_name']);
+            finfo_close($finfo);
+            $allowedThumb = ['image/jpeg', 'image/png', 'image/webp'];
+            $ext = strtolower(pathinfo($img['name'], PATHINFO_EXTENSION));
+            $blocked = ['php', 'phtml', 'phar', 'js', 'exe', 'sh'];
+            if (in_array($mime, $allowedThumb) && !in_array($ext, $blocked)) {
+                $thumbDir = __DIR__ . '/../assets/uploads/thumbnails/';
+                if (!is_dir($thumbDir)) mkdir($thumbDir, 0755, true);
+                $safeName = bin2hex(random_bytes(8)) . '.' . $ext;
+                $dest = $thumbDir . $safeName;
+                if (move_uploaded_file($img['tmp_name'], $dest)) {
+                    $thumbnail = '../assets/uploads/thumbnails/' . $safeName;
+                } else {
+                    $errors[] = 'Failed to move thumbnail file.';
                 }
-              }
+            } else {
+                $errors[] = 'Invalid thumbnail file type.';
             }
-
-              $attDir = __DIR__ . '/../assets/uploads/attachments/';
-              if (!is_dir($attDir)) mkdir($attDir, 0755, true);
-
-              $attachFile = [
-                'name' => $_FILES['lesson_attachments']['name'][$o_index][$l_index],
-                'tmp_name' => $_FILES['lesson_attachments']['tmp_name'][$o_index][$l_index],
-                'error' => $_FILES['lesson_attachments']['error'][$o_index][$l_index],
-                'size' => $_FILES['lesson_attachments']['size'][$o_index][$l_index]
-              ];
-
-              if ($attachFile['error'] === UPLOAD_ERR_OK && $attachFile['size'] <= 50 * 1024 * 1024) {
-                $finfo = finfo_open(FILEINFO_MIME_TYPE);
-                $mime = finfo_file($finfo, $attachFile['tmp_name']);
-                finfo_close($finfo);
-                $allowedAtt = ['application/pdf','application/zip','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','video/mp4','application/octet-stream'];
-                $ext = strtolower(pathinfo($attachFile['name'], PATHINFO_EXTENSION));
-                $blocked = ['php','phtml','phar','js','exe','sh'];
-                if (!in_array($ext, $blocked) && in_array($mime, $allowedAtt)) {
-                  $safe = bin2hex(random_bytes(8)) . '.' . $ext;
-                  $dest = $attDir . $safe;
-                  if (move_uploaded_file($attachFile['tmp_name'], $dest)) {
-                    // Insert into lesson_attachments table
-                    $insAtt = $pdo->prepare("INSERT INTO lesson_attachments (lesson_id, file_url) VALUES (?, ?)");
-                    $insAtt->execute([
-                      $lesson_id,
-                      '../assets/uploads/attachments/' . $safe
-                    ]);
-                  }
-                }
-              }
-            }
-      }
+        } else {
+            $errors[] = 'Thumbnail upload error or file too large.';
+        }
     }
 
     if (empty($errors)) {
@@ -287,13 +234,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                                 // Insert into lesson_attachments table
                                 $insAtt = $pdo->prepare("
-                                    INSERT INTO lesson_attachments (lesson_id, file_url)
-                                    VALUES (?, ?)
+                                    INSERT INTO lesson_attachments (lesson_id, file_name, file_path, file_type)
+                                    VALUES (?, ?, ?, ?)
                                 ");
 
                                 $insAtt->execute([
                                     $lesson_id,
-                                    '../assets/uploads/attachments/' . $safe
+                                    basename($safe),
+                                    '../assets/uploads/attachments/' . $safe,
+                                    pathinfo($safe, PATHINFO_EXTENSION)
                                 ]);
                             }
                         }
@@ -389,13 +338,73 @@ include __DIR__ . '/inc/navbar.php';
 .module-block { border:1px dashed #ddd; padding:12px; margin-bottom:12px; border-radius:6px; background:#fff; }
 .lesson-sub { border:1px solid #eee; padding:10px; margin:6px 0; border-radius:6px; background:#fafafa; }
 </style>
+<link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+<script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
 
 <script>
+const quillToolbarOptions = [
+  [{ font: [] }, { size: [] }],
+  [{ header: [1,2,3,4,5,6,false] }],
+  ['bold','italic','underline','strike'],
+  [{ color: [] }, { background: [] }],
+  [{ align: [] }],
+  [{ list: 'ordered' }, { list: 'bullet' }],
+  [{ indent: '-1' }, { indent: '+1' }],
+  ['blockquote','code-block'],
+  ['link','image'],
+  ['clean']
+];
+
+let outlineIndex = 0;
+const lessonEditors = [];
+window.courseDescriptionEditor = null;
+let courseDescriptionEditor = null;
+
+function initQuillEditors() {
+    if (!courseDescriptionEditor) {
+        window.courseDescriptionEditor = courseDescriptionEditor = new Quill('#courseDescriptionEditor', {
+            theme: 'snow',
+            modules: { toolbar: quillToolbarOptions }
+        });
+    }
+
+    document.querySelectorAll('.quill-editor').forEach(el => {
+        if (el.dataset.quillInited === '1') return;
+        const targetName = el.dataset.target;
+        const textarea = document.getElementsByName(targetName)[0];
+        if (!textarea) return;
+
+        const quill = new Quill(el, {
+            theme: 'snow',
+            modules: { toolbar: quillToolbarOptions }
+        });
+
+        if (textarea.value) {
+            quill.root.innerHTML = textarea.value;
+        }
+
+        el.dataset.quillInited = '1';
+        el.__quill = quill;
+        lessonEditors.push({ quill, textarea });
+    });
+}
+
+function syncQuillContent() {
+    if (courseDescriptionEditor) {
+        const courseDescription = document.getElementById('courseDescription');
+        courseDescription.value = courseDescriptionEditor.root.innerHTML;
+    }
+
+    lessonEditors.forEach(({ quill, textarea }) => {
+        if (textarea) {
+            textarea.value = quill.root.innerHTML;
+        }
+    });
+}
+
 function togglePrice(){
   document.getElementById('priceField').style.display = document.getElementById('courseType').value === 'paid' ? 'block' : 'none';
 }
-
-let outlineIndex = 0;
 
 function addOutline(){
   const c = document.getElementById('outlinesContainer');
@@ -493,11 +502,17 @@ function addLesson(outlineIdx){
   </div>`;
 
   container.insertAdjacentHTML('beforeend', html);
+  initQuillEditors();
 }
 
-
-
-
+// Initialize editors once DOM is ready and sync on submit
+window.addEventListener('DOMContentLoaded', () => {
+    initQuillEditors();
+    const courseForm = document.getElementById('courseForm');
+    if (courseForm) {
+        courseForm.addEventListener('submit', syncQuillContent);
+    }
+});
 
 // ===============================
 // TEST MODAL

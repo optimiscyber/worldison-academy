@@ -92,3 +92,7 @@ if ($result['status'] && $result['data']['status'] === 'success') {
             echo "<script>alert('Payment successful! You are now enrolled in this course.'); window.location='../dashboard.php';</script>";
         }
     }
+}
+else {
+    echo "<script>alert('Payment verification failed.'); window.location='../dashboard.php';</script>";
+}

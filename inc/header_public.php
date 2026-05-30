@@ -26,10 +26,10 @@ $is_logged_in = isset($_SESSION['user_id']);
 
 <!-- Vendor CSS Files -->
 <link href="assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet" />
-<link href="assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet" />
 <link href="assets/vendor/aos/aos.css" rel="stylesheet" />
-<link href="assets/vendor/glightbox/css/glightbox.min.css" rel="stylesheet" />
-<link href="assets/vendor/swiper/swiper-bundle.min.css" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/npm/glightbox/dist/css/glightbox.min.css" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/npm/swiper/swiper-bundle.min.css" rel="stylesheet" />
 
 <!-- Main CSS File -->
 <link href="assets/css/main.css" rel="stylesheet" />

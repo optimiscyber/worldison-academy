@@ -235,7 +235,7 @@ try {
                   </h5>
 
                   <p class="description small text-muted mb-3">
-                    <?= htmlspecialchars(mb_substr(strip_tags($course['description']), 0, 140)) ?>...
+                    <?= htmlspecialchars(safe_substr(strip_tags($course['description']), 0, 140)) ?>...
                   </p>
 
                   <div class="trainer d-flex justify-content-between align-items-center">

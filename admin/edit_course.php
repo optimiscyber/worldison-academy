@@ -230,6 +230,7 @@ include __DIR__ . '/inc/navbar.php';
 
 <script>
 // Full toolbar
+window.courseQuill = null;
 const fullToolbar = [
     [{ font: [] }, { size: [] }],
     [{ header: [1,2,3,4,5,6,false] }],
@@ -244,7 +245,7 @@ const fullToolbar = [
 ];
 
 // Initialize Quill editor
-const courseQuill = new Quill('#courseDescriptionEditor', {
+window.courseQuill = new Quill('#courseDescriptionEditor', {
     theme: 'snow',
     modules: {
         toolbar: fullToolbar
@@ -253,11 +254,11 @@ const courseQuill = new Quill('#courseDescriptionEditor', {
 
 // Load existing course description into Quill
 const initialHtml = <?php echo json_encode(htmlspecialchars_decode($course['description'] ?? '')); ?>;
-courseQuill.root.innerHTML = initialHtml;
+window.courseQuill.root.innerHTML = initialHtml;
 
 // On form submit, copy Quill content into hidden textarea
 document.getElementById('courseForm').addEventListener('submit', function() {
-    document.getElementById('courseDescription').value = courseQuill.root.innerHTML;
+    document.getElementById('courseDescription').value = window.courseQuill.root.innerHTML;
 });
 </script>
 

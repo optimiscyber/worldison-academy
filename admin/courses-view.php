@@ -8,7 +8,7 @@ try {
     if (isset($_SESSION['user_id']) && ($_SESSION['role'] ?? '') === 'instructor') {
         // Instructor: show only their courses
         $stmt = $pdo->prepare("
-            SELECT c.*, u.name AS instructor_name, cat.name AS category_name
+            SELECT c.*, u.name AS instructor_name, u.profile_picture, cat.name AS category_name
             FROM courses c
             JOIN users u ON c.instructor_id = u.id
             LEFT JOIN categories cat ON c.category_id = cat.id
@@ -19,7 +19,7 @@ try {
     } else {
         // Public / other roles: show all courses
         $stmt = $pdo->prepare("
-            SELECT c.*, u.name AS instructor_name, cat.name AS category_name
+            SELECT c.*, u.name AS instructor_name, u.profile_picture, cat.name AS category_name
             FROM courses c
             JOIN users u ON c.instructor_id = u.id
             LEFT JOIN categories cat ON c.category_id = cat.id
@@ -31,6 +31,44 @@ try {
 } catch (PDOException $e) {
     error_log("DB error in courses-view.php: " . $e->getMessage());
     $courses = [];
+}
+
+function resolveAdminImagePath(string $storedPath, string $basePrefix, string $fallback): string {
+    if (empty($storedPath)) {
+        return $fallback;
+    }
+
+    $normalized = preg_replace('#^\./+#', '', $storedPath);
+
+    if (preg_match('#^https?://#i', $normalized)) {
+        return $normalized;
+    }
+
+    if (preg_match('#^\.\./#', $normalized)) {
+        $serverPath = __DIR__ . '/' . ltrim($normalized, '/');
+        if (file_exists($serverPath)) {
+            return $normalized;
+        }
+        $normalized = preg_replace('#^\.\./+#', '', $normalized);
+    }
+
+    if (preg_match('#^/#', $normalized)) {
+        $serverPath = __DIR__ . '/' . ltrim($normalized, '/');
+        return file_exists($serverPath) ? $normalized : $fallback;
+    }
+
+    if (preg_match('#^(assets|uploads)/#i', $normalized)) {
+        $normalized = '../' . ltrim($normalized, '/');
+    } else {
+        $normalized = trim($basePrefix, '/') . '/' . ltrim($normalized, '/');
+    }
+
+    $serverPath = __DIR__ . '/' . ltrim($normalized, '/');
+    if (!file_exists($serverPath)) {
+        return $fallback;
+    }
+
+    return $normalized;
 }
 
 $pageTitle = 'Courses - LMS';
@@ -57,19 +95,10 @@ include __DIR__ . '/inc/navbar.php';
 
                 <?php if (!empty($courses)): ?>
                     <?php foreach ($courses as $course): 
-                        $thumb = $course['thumbnail'] ?? '';
-                        $thumbnail = '../assets/img/default-course.jpg';
-                        if (!empty($thumb)) {
-                            if (preg_match('#^(https?://|../|assets/uploads/)#i', $thumb)) {
-                                $thumbnail = $thumb;
-                            } else {
-                                $thumbPath = '../assets/uploads/thumbnails/' . ltrim($thumb, '/');
-                                if (file_exists(__DIR__ . '/' . $thumbPath)) $thumbnail = $thumbPath;
-                            }
-                        }
-
                         $categoryName = $course['category_name'] ?? 'Uncategorized';
                         $instructorName = $course['instructor_name'] ?? 'Unknown';
+                        $thumbnail = resolveAdminImagePath($course['thumbnail'] ?? '', '../assets/uploads/thumbnails', '../assets/img/default-course.jpg');
+                        $profileImage = resolveAdminImagePath($course['profile_picture'] ?? '', '../assets/uploads/profiles', '../assets/img/trainers/default.jpg');
                     ?>
 
                     <div class="col-lg-4 col-md-6 d-flex align-items-stretch course-card" 
@@ -96,12 +125,12 @@ include __DIR__ . '/inc/navbar.php';
                                 </h5>
 
                                 <p class="card-text text-muted small">
-                                    <?= htmlspecialchars(mb_substr(strip_tags($course['description']),0,140)) ?>...
+                                    <?= htmlspecialchars(safe_substr(strip_tags($course['description']), 0, 140)) ?>...
                                 </p>
 
                                 <div class="d-flex justify-content-between align-items-center mt-3">
                                     <div class="d-flex align-items-center">
-                                        <img src="../assets/img/trainers/default.jpg" class="rounded-circle me-2" width="40" height="40" style="object-fit:cover;" alt="Trainer">
+                                        <img src="<?= htmlspecialchars($profileImage) ?>" class="rounded-circle me-2" width="40" height="40" style="object-fit:cover;" alt="Trainer">
                                         <a href="course-details.php?id=<?= (int)$course['id'] ?>" class="fw-semibold text-dark">
                                             <?= htmlspecialchars($instructorName) ?>
                                         </a>
@@ -136,16 +165,17 @@ include __DIR__ . '/inc/navbar.php';
 <script>
 const searchInput = document.getElementById('courseSearch');
 const courseCards = document.querySelectorAll('.course-card');
-
-searchInput.addEventListener('input', () => {
-    const term = searchInput.value.toLowerCase().trim();
-    courseCards.forEach(card => {
-        const title = card.dataset.title;
-        const category = card.dataset.category;
-        const instructor = card.dataset.instructor;
-        card.style.display = (title.includes(term) || category.includes(term) || instructor.includes(term)) ? 'block' : 'none';
+if (searchInput && courseCards.length) {
+    searchInput.addEventListener('input', () => {
+        const term = searchInput.value.toLowerCase().trim();
+        courseCards.forEach(card => {
+            const title = card.dataset.title || '';
+            const category = card.dataset.category || '';
+            const instructor = card.dataset.instructor || '';
+            card.style.display = (title.includes(term) || category.includes(term) || instructor.includes(term)) ? 'block' : 'none';
+        });
     });
-});
+}
 </script>
 
 </body>

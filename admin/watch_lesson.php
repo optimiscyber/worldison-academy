@@ -4,7 +4,12 @@ ini_set('display_errors', 1);
 require_once "inc/db.php";
 require_once "../inc/auth.php";
 
-$user_id = $_SESSION['user_id'] ?? 0;
+if (empty($_SESSION['user_id'])) {
+    header('Location: ../login.php');
+    exit;
+}
+
+$user_id = $_SESSION['user_id'];
 
 $lesson_id = intval($_GET['id'] ?? 0);
 if (!$lesson_id) die("Invalid lesson ID.");
@@ -348,13 +353,7 @@ document.addEventListener("DOMContentLoaded", function () {
 <script>
 (function(){
     const lessonId = <?= json_encode($lesson_id) ?>;
-    const markUrl = '/ajax/mark_complete.php';
-    fetch('/admin/ajax/mark_complete.php', {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: {'Content-Type':'application/x-www-form-urlencoded'},
-    body: 'lesson_id=' + encodeURIComponent(lessonId)
-})
+    const markUrl = 'ajax/mark_complete.php';
 
     async function markCompleted() {
         try {

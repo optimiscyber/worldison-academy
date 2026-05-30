@@ -1,4 +1,10 @@
 <?php
+session_start();
+if (empty($_SESSION['user_id'])) {
+    header('Location: ../login.php');
+    exit;
+}
+
 require_once "inc/db.php";
 
 $instructor_id = $_SESSION['user_id'];

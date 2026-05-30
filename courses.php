@@ -79,27 +79,10 @@ try {
               
               <?php
                 $thumbDb = $course['thumbnail'] ?? null;
+                $thumbnail = resolveWebImagePath($thumbDb, 'assets/uploads/thumbnails', 'assets/img/default-course.jpg');
 
-                if (!empty($thumbDb)) {
-                    // If it's already a full web URL or correct relative path, use as-is
-                    if (preg_match('#^(https?://|/|assets/uploads/)#i', $thumbDb)) {
-                        $thumbnail = $thumbDb;
-                    } else {
-                        // otherwise prepend the correct web directory
-                        $thumbnail = 'assets/uploads/thumbnails/' . ltrim($thumbDb, '/');
-                    }
-                } else {
-                    $thumbnail = 'assets/img/default-course.jpg';
-                }
-
-                // Double-check that file exists in the server path (optional for localhost dev)
-                $serverPath = __DIR__ . '/' . $thumbnail;
-                if (!file_exists($serverPath)) {
-                    $thumbnail = 'assets/img/default-course.jpg';
-                }
-                
-              // Safe category
-              $categoryName = !empty($course['category_name']) ? $course['category_name'] : 'Uncategorized';
+                // Safe category
+                $categoryName = !empty($course['category_name']) ? $course['category_name'] : 'Uncategorized';
             ?>
 
             <div class="col-lg-4 col-md-6 d-flex align-items-stretch">
@@ -121,18 +104,21 @@ try {
                   </div>
 
                   <h5 class="fw-bold mb-2">
-                    <a href="admin/course-details.php?id=<?= (int)$course['id'] ?>" class="text-decoration-none">
+                    <a href="course-details.php?id=<?= (int)$course['id'] ?>" class="text-decoration-none">
                       <?= htmlspecialchars($course['title']) ?>
                     </a>
                   </h5>
 
                   <p class="description small text-muted mb-3">
-                    <?= htmlspecialchars(mb_substr(strip_tags($course['description']), 0, 140)) ?>...
+                    <?= htmlspecialchars(safe_substr(strip_tags($course['description']), 0, 140)) ?>...
                   </p>
 
                   <div class="trainer d-flex justify-content-between align-items-center">
-                    <div class="trainer-profile d-flex align-items-center">
-                      <img src="assets/img/trainers/default.jpg" class="img-fluid rounded-circle me-2" alt="Trainer" width="40" height="40" style="object-fit:cover;">
+                    <?php
+                    $profileImage = resolveWebImagePath($course['profile_picture'] ?? '', 'assets/uploads/profiles', 'assets/img/trainers/default.jpg');
+                  ?>
+                  <div class="trainer-profile d-flex align-items-center">
+                      <img src="<?= htmlspecialchars($profileImage) ?>" class="img-fluid rounded-circle me-2" alt="Trainer" width="40" height="40" style="object-fit:cover;">
                       <a href="#" class="trainer-link fw-semibold"><?= htmlspecialchars($course['instructor_name']) ?></a>
                     </div>
                     <div class="trainer-rank text-muted small">

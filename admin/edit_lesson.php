@@ -74,8 +74,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $safe = time() . "_" . preg_replace('/[^a-zA-Z0-9\-_\.]/','', basename($name));
                 $dest = $attDir . $safe;
                 if (move_uploaded_file($tmp, $dest)) {
-                    $pdo->prepare("INSERT INTO lesson_attachments (lesson_id, file_url) VALUES (?, ?)")
-                        ->execute([$lesson_id, '../assets/uploads/attachments/' . $safe]);
+                    $pdo->prepare("INSERT INTO lesson_attachments (lesson_id, file_name, file_path, file_type) VALUES (?, ?, ?, ?)")
+                        ->execute([$lesson_id, basename($safe), '../assets/uploads/attachments/' . $safe, pathinfo($safe, PATHINFO_EXTENSION)]);
                 }
             }
         }
@@ -160,7 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php if($attachments): ?>
         <ul>
             <?php foreach($attachments as $att): ?>
-                <li><a href="<?= $att['file_url'] ?>" target="_blank"><?= basename($att['file_url']) ?></a></li>
+                <li><a href="<?= htmlspecialchars($att['file_path']) ?>" target="_blank"><?= htmlspecialchars($att['file_name'] ?: basename($att['file_path'])) ?></a></li>
             <?php endforeach; ?>
         </ul>
         <?php endif; ?>
