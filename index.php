@@ -9,9 +9,10 @@ try {
     // If instructor is logged in show their courses (including drafts) for preview/testing
     if (isset($_SESSION['user_id']) && ($_SESSION['role'] ?? '') === 'instructor') {
         $stmt = $pdo->prepare("
-            SELECT c.*, u.name AS instructor_name
-            FROM courses c
-            JOIN users u ON c.instructor_id = u.id
+            SELECT c.*, u.name AS instructor_name, u.profile_picture, cat.name AS category_name
+              FROM courses c
+              JOIN users u ON c.instructor_id = u.id
+              LEFT JOIN categories cat ON c.category_id = cat.id
             WHERE c.instructor_id = ?
             ORDER BY c.id DESC
             LIMIT 3
@@ -20,9 +21,11 @@ try {
       } else {
         // Public visitors: show all published + test courses
         $stmt = $pdo->prepare("
-            SELECT c.*, u.name AS instructor_name
-            FROM courses c
-            JOIN users u ON c.instructor_id = u.id
+            SELECT c.*, u.name AS instructor_name, u.profile_picture, cat.name AS category_name
+              FROM courses c
+              JOIN users u ON c.instructor_id = u.id
+              LEFT JOIN categories cat ON c.category_id = cat.id
+            WHERE c.status = 'published'
             ORDER BY c.id DESC
             LIMIT 3
         ");
@@ -187,26 +190,11 @@ try {
         <div class="row">
         <?php if (!empty($courses)): ?>
           <?php foreach ($courses as $course): ?>
-            <?php
+              <?php
               $thumbDb = $course['thumbnail'] ?? null;
-
-              if (!empty($thumbDb)) {
-                  // If it's already a full web URL or correct relative path, use as-is
-                  if (preg_match('#^(https?://|/|assets/uploads/)#i', $thumbDb)) {
-                      $thumbnail = $thumbDb;
-                  } else {
-                      // otherwise prepend the correct web directory
-                      $thumbnail = 'assets/uploads/thumbnails/' . ltrim($thumbDb, '/');
-                  }
-              } else {
-                  $thumbnail = 'assets/img/default-course.jpg';
-              }
-
-              // Double-check that file exists in the server path (optional for localhost dev)
-              $serverPath = __DIR__ . '/' . $thumbnail;
-              if (!file_exists($serverPath)) {
-                  $thumbnail = 'assets/img/default-course.jpg';
-              }
+              $thumbnail = resolveWebImagePath($thumbDb, 'assets/uploads/thumbnails', 'assets/img/default-course.jpg');
+              $profileImage = resolveWebImagePath($course['profile_picture'] ?? '', 'assets/uploads/profiles', 'assets/img/trainers/default.jpg');
+              $categoryName = $course['category_name'] ?: 'Uncategorized';
               ?>
 
 
@@ -222,14 +210,14 @@ try {
                 
                 <div class="course-content p-3">
                   <div class="d-flex justify-content-between align-items-center mb-2">
-                    <p class="category mb-0"><?= htmlspecialchars(ucfirst($course['category'] ?: 'Uncategorized')) ?></p>
+                    <p class="category mb-0"><?= htmlspecialchars(ucfirst($categoryName)) ?></p>
                     <p class="price mb-0">
                       <?= $course['type'] === 'paid' ? '₦' . number_format($course['price'], 2) : 'Free' ?>
                     </p>
                   </div>
 
                   <h5 class="fw-bold mb-2">
-                    <a href="course-details.php?id=<?= (int)$course['id'] ?>" class="text-decoration-none">
+                    <a href="admin/course-details.php?id=<?= (int)$course['id'] ?>" class="text-decoration-none">
                       <?= htmlspecialchars($course['title']) ?>
                     </a>
                   </h5>
@@ -240,7 +228,7 @@ try {
 
                   <div class="trainer d-flex justify-content-between align-items-center">
                     <div class="trainer-profile d-flex align-items-center">
-                      <img src="assets/img/trainers/default.jpg" class="img-fluid rounded-circle me-2" alt="Trainer" width="40" height="40" style="object-fit:cover;">
+                        <img src="<?= htmlspecialchars($profileImage) ?>" class="img-fluid rounded-circle me-2" alt="Trainer" width="40" height="40" style="object-fit:cover;">
                       <a href="#" class="trainer-link fw-semibold"><?= htmlspecialchars($course['instructor_name']) ?></a>
                     </div>
                     <div class="trainer-rank text-muted small">

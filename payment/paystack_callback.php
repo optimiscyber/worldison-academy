@@ -36,7 +36,7 @@ if ($data['data']['status'] === "success") {
     $en->execute([$pay['user_id'], $pay['course_id']]);
 
     // 4. Redirect to the course
-    header("Location: ../courses/course.php?id=" . $pay['course_id']);
+    header("Location: ../admin/course-details.php?id=" . $pay['course_id']);
     exit;
 }
 

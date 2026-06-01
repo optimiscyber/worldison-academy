@@ -31,4 +31,33 @@ if (!function_exists('safe_substr')) {
         return function_exists('mb_substr') ? mb_substr($text, $start, $length) : substr($text, $start, $length);
     }
 }
+
+if (!function_exists('resolveWebImagePath')) {
+    function resolveWebImagePath(?string $storedPath, string $uploadDir, string $fallback): string {
+        if (empty($storedPath)) {
+            return $fallback;
+        }
+
+        $path = trim($storedPath);
+        if (preg_match('#^(https?://|//)#i', $path)) {
+            return $path;
+        }
+
+        // Normalize common admin storage paths into public-accessible asset paths.
+        $path = str_replace('\\', '/', $path);
+        $path = preg_replace('#^\./+#', '', $path);
+        $path = preg_replace('#^\.\./+#', '', $path);
+        if (!preg_match('#^(assets|uploads)/#i', $path)) {
+            $path = trim($uploadDir, '/') . '/' . ltrim($path, '/');
+        }
+
+        $root = realpath(__DIR__ . '/../');
+        $serverPath = $root ? $root . '/' . ltrim($path, '/') : null;
+        if ($serverPath && file_exists($serverPath)) {
+            return $path;
+        }
+
+        return $fallback;
+    }
+}
 ?>

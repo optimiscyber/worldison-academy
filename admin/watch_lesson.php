@@ -29,6 +29,7 @@ if (!$lesson) die("Lesson not found.");
 $course_id = $lesson['course_id'];
 $_SESSION['last_course_id'] = $course_id;
 
+// Use actual schema field for course type and fallback if not present
 $course_type = strtolower(trim($lesson['type'] ?? 'free'));
 
 // Check enrollment
@@ -69,6 +70,10 @@ $lessons_stmt = $pdo->prepare("
 ");
 $lessons_stmt->execute([$user_id,$course_id]);
 $all_lessons = $lessons_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$attachments_stmt = $pdo->prepare("SELECT id, file_name, file_path, file_type FROM lesson_attachments WHERE lesson_id = ? ORDER BY created_at ASC");
+$attachments_stmt->execute([$lesson_id]);
+$attachments = $attachments_stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $ids = array_column($all_lessons,'id');
 $current_index = array_search($lesson_id,$ids);
@@ -142,18 +147,38 @@ include __DIR__.'/inc/navbar.php';
 <!-- SIDEBAR -->
 <div class="col-lg-3 mb-3">
   <div class="bg-light p-3 rounded shadow-sm">
+    <?php if (!empty($attachments)): ?>
+        <div class="mt-4 border-top pt-3">
+            <h5 class="fw-bold">Lesson Attachments</h5>
+            <ul class="list-group list-group-flush">
+                <?php foreach ($attachments as $file): ?>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span><?= htmlspecialchars($file['file_name']) ?></span>
+                        <a href="<?= htmlspecialchars($file['file_path']) ?>" target="_blank" class="btn btn-sm btn-outline-secondary">Download</a>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+    <?php endif; ?>
     <h5 class="fw-bold mb-3"><?= htmlspecialchars($lesson['course_title']) ?></h5>
 
     <ul class="list-group">
       <?php foreach ($all_lessons as $index => $l):
           $locked = ($index > 0 && !$all_lessons[$index-1]['completed']);
       ?>
-      <a class="list-group-item list-group-item-action 
-                <?= $l['id']==$lesson_id?'active':'' ?> 
-                <?= $locked?'disabled':'' ?>"
+      <a class="list-group-item list-group-item-action <?= $l['id']==$lesson_id?'active':'' ?> <?= $locked?'disabled locked':'' ?>" 
+         data-lesson-id="<?= (int)$l['id'] ?>"
          href="<?= $locked?'#':'watch_lesson.php?id='.$l['id'] ?>">
-         <?= htmlspecialchars($l['title']) ?>
-         <?= $l['completed'] ? " ✅" : "" ?>
+         <div class="d-flex justify-content-between align-items-center w-100">
+             <div class="lesson-title"><?= htmlspecialchars($l['title']) ?></div>
+             <div class="lesson-meta">
+                 <?php if ($l['completed']): ?>
+                     <span class="badge bg-success">Completed</span>
+                 <?php elseif ($locked): ?>
+                     <span class="badge bg-secondary">Locked</span>
+                 <?php endif; ?>
+             </div>
+         </div>
       </a>
       <?php endforeach; ?>
     </ul>
@@ -186,8 +211,19 @@ document.addEventListener("scroll", function () {
 
 <div class="bg-light p-4 rounded shadow-sm">
 
-<h3><?= htmlspecialchars($lesson['title']) ?></h3>
-<p class="text-muted">Instructor: <?= htmlspecialchars($lesson['instructor_name']) ?></p>
+<?php $progress_percent = $total_lessons ? (int) round(($completed_lessons / $total_lessons) * 100) : 0; ?>
+<div class="mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-1">
+        <div>Progress: <strong><?= $completed_lessons ?>/<?= $total_lessons ?> (<?= $progress_percent ?>%)</strong></div>
+        <div class="small text-muted">Lesson: <?= htmlspecialchars($lesson['title']) ?></div>
+    </div>
+    <div class="progress" style="height:8px;">
+        <div class="progress-bar bg-success" role="progressbar" style="width: <?= $progress_percent ?>%"></div>
+    </div>
+</div>
+
+    <h3><?= htmlspecialchars($lesson['title']) ?></h3>
+    <p class="text-muted">Instructor: <?= htmlspecialchars($lesson['instructor_name']) ?></p>
 
 <!-- ========================= -->
 <!-- TEXT-ONLY LESSON HANDLING -->
@@ -227,10 +263,10 @@ document.addEventListener("scroll", function () {
         <?= $lesson['content'] ?>
     </div>
 
-    <?php if (!$progress['completed'] ?? false): ?>
-    <button id="textMarkComplete" class="btn btn-success mt-3">
-        Mark Lesson Complete
-    </button>
+    <?php if (!empty($progress['completed'])): ?>
+        <div class="alert alert-success">This lesson is already completed.</div>
+    <?php else: ?>
+        <button id="textMarkComplete" class="btn btn-success mt-3">Mark Lesson Complete</button>
     <?php endif; ?>
 
     </div>
@@ -370,25 +406,43 @@ document.addEventListener("DOMContentLoaded", function () {
                 return;
             }
 
-            // Disable text button if exists
+            // Update UI: buttons
             const textBtn = document.getElementById('textMarkComplete');
-            if(textBtn) {
-                textBtn.disabled = true;
-                textBtn.innerText = 'Marked';
-            }
-
-            // Disable YouTube button if exists
+            if (textBtn) { textBtn.disabled = true; textBtn.innerText = 'Marked'; }
             const ytBtn = document.getElementById('markCompleteBtn');
-            if(ytBtn) {
-                ytBtn.disabled = true;
-                ytBtn.innerText = 'Marked';
-            }
+            if (ytBtn) { ytBtn.disabled = true; ytBtn.innerText = 'Marked'; }
 
-            // Show alert if course completed
-            if(data.course_completed){
-                alert('🎉 Congrats — you completed all lessons for this course!');
-                location.reload();
-            }
+            // Update sidebar item for current lesson
+            try {
+                const item = document.querySelector(`[data-lesson-id='${lessonId}']`);
+                if (item) {
+                    item.classList.remove('locked','disabled');
+                    const meta = item.querySelector('.lesson-meta');
+                    if (meta) meta.innerHTML = '<span class="badge bg-success">Completed</span>';
+                }
+
+                // Unlock next lesson if present
+                const nextId = <?= json_encode($next_id ?? null) ?>;
+                if (nextId) {
+                    const nextItem = document.querySelector(`[data-lesson-id='${nextId}']`);
+                    if (nextItem) {
+                        nextItem.classList.remove('disabled','locked');
+                        nextItem.href = 'watch_lesson.php?id=' + nextId;
+                    }
+                }
+
+                // Update progress bar
+                if (data.completed_lessons !== undefined && data.total_lessons !== undefined) {
+                    const percent = data.total_lessons ? Math.round((data.completed_lessons / data.total_lessons) * 100) : 0;
+                    const bar = document.querySelector('.progress .progress-bar');
+                    if (bar) bar.style.width = percent + '%';
+                }
+
+                if (data.course_completed) {
+                    alert('🎉 Congrats — you completed all lessons for this course!');
+                    location.reload();
+                }
+            } catch (e) { console.warn(e); }
 
         } catch(err) {
             console.error(err);

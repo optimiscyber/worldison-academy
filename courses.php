@@ -13,9 +13,10 @@ try {
     if (isset($_SESSION['user_id']) && ($_SESSION['role'] ?? '') === 'instructor') {
         // Instructor: show their courses (including drafts)
         $stmt = $pdo->prepare("
-            SELECT c.*, 
-                   u.name AS instructor_name,
-                   cat.name AS category_name
+             SELECT c.*, 
+               u.name AS instructor_name,
+               u.profile_picture,
+               cat.name AS category_name
             FROM courses c
             JOIN users u ON c.instructor_id = u.id
             LEFT JOIN categories cat ON c.category_id = cat.id
@@ -26,13 +27,15 @@ try {
     } else {
         // Public visitors: show all published + test courses
         $stmt = $pdo->prepare("
-            SELECT c.*, 
-                   u.name AS instructor_name,
-                   cat.name AS category_name
+             SELECT c.*, 
+               u.name AS instructor_name,
+               u.profile_picture,
+               cat.name AS category_name
             FROM courses c
             JOIN users u ON c.instructor_id = u.id
             LEFT JOIN categories cat ON c.category_id = cat.id
-            ORDER BY c.id DESC
+        WHERE c.status = 'published'
+        ORDER BY c.id DESC
         ");
         $stmt->execute();
     }
@@ -104,7 +107,7 @@ try {
                   </div>
 
                   <h5 class="fw-bold mb-2">
-                    <a href="course-details.php?id=<?= (int)$course['id'] ?>" class="text-decoration-none">
+                    <a href="admin/course-details.php?id=<?= (int)$course['id'] ?>" class="text-decoration-none">
                       <?= htmlspecialchars($course['title']) ?>
                     </a>
                   </h5>
@@ -118,7 +121,7 @@ try {
                     $profileImage = resolveWebImagePath($course['profile_picture'] ?? '', 'assets/uploads/profiles', 'assets/img/trainers/default.jpg');
                   ?>
                   <div class="trainer-profile d-flex align-items-center">
-                      <img src="<?= htmlspecialchars($profileImage) ?>" class="img-fluid rounded-circle me-2" alt="Trainer" width="40" height="40" style="object-fit:cover;">
+                          <img src="<?= htmlspecialchars($profileImage) ?>" class="img-fluid rounded-circle me-2" alt="Trainer" width="40" height="40" style="object-fit:cover;">
                       <a href="#" class="trainer-link fw-semibold"><?= htmlspecialchars($course['instructor_name']) ?></a>
                     </div>
                     <div class="trainer-rank text-muted small">
