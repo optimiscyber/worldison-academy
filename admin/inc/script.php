@@ -1,10 +1,7 @@
 <?php
 // inc/script.php
-// ensure $basePath is defined
-if (!isset($basePath)) {
-    $basePath = (strpos($_SERVER['REQUEST_URI'], '/admin/') !== false
-        || strpos($_SERVER['REQUEST_URI'], '/payment/') !== false) ? '../' : './';
-}
+// $basePath should be defined by admin/inc/header.php
+$basePath = $basePath ?? './';
 ?>
     <!-- Content End (closing tags are placed by this include) -->
 
@@ -15,15 +12,15 @@ if (!isset($basePath)) {
     <!-- JavaScript Libraries -->
     <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="lib/chart/chart.min.js"></script>
-    <script src="lib/easing/easing.min.js"></script>
-    <script src="lib/waypoints/waypoints.min.js"></script>
-    <script src="lib/owlcarousel/owl.carousel.min.js"></script>
-    <script src="lib/tempusdominus/js/moment.min.js"></script>
-    <script src="lib/tempusdominus/js/moment-timezone.min.js"></script>
-    <script src="lib/tempusdominus/js/tempusdominus-bootstrap-4.min.js"></script>
+    <script src="<?= $basePath ?>lib/chart/chart.min.js"></script>
+    <script src="<?= $basePath ?>lib/easing/easing.min.js"></script>
+    <script src="<?= $basePath ?>lib/waypoints/waypoints.min.js"></script>
+    <script src="<?= $basePath ?>lib/owlcarousel/owl.carousel.min.js"></script>
+    <script src="<?= $basePath ?>lib/tempusdominus/js/moment.min.js"></script>
+    <script src="<?= $basePath ?>lib/tempusdominus/js/moment-timezone.min.js"></script>
+    <script src="<?= $basePath ?>lib/tempusdominus/js/tempusdominus-bootstrap-4.min.js"></script>
 <!-- Template Javascript (WORLDISON's main script) -->
-<script src="js/main.js"></script>
+<script src="<?= $basePath ?>js/main.js"></script>
 
 <!-- small script: hide spinner when page is loaded -->
 <script>

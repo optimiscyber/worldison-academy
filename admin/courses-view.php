@@ -3,34 +3,56 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 session_start();
 require_once "inc/db.php";
+require_once __DIR__ . '/../app/Repositories/CourseRepository.php';
+
+$courses = [];
+$useNewBackend = false;
 
 try {
-    if (isset($_SESSION['user_id']) && ($_SESSION['role'] ?? '') === 'instructor') {
-        // Instructor: show only their courses
-        $stmt = $pdo->prepare("
-            SELECT c.*, u.name AS instructor_name, u.profile_picture, cat.name AS category_name
-            FROM courses c
-            JOIN users u ON c.instructor_id = u.id
-            LEFT JOIN categories cat ON c.category_id = cat.id
-            WHERE c.instructor_id = ?
-            ORDER BY c.id DESC
-        ");
-        $stmt->execute([$_SESSION['user_id']]);
-    } else {
-        // Public / other roles: show all courses
-        $stmt = $pdo->prepare("
-            SELECT c.*, u.name AS instructor_name, u.profile_picture, cat.name AS category_name
-            FROM courses c
-            JOIN users u ON c.instructor_id = u.id
-            LEFT JOIN categories cat ON c.category_id = cat.id
-            ORDER BY c.id DESC
-        ");
-        $stmt->execute();
+    if (class_exists('CourseRepository')) {
+        $courseRepo = new CourseRepository($pdo);
+        if (isset($_SESSION['user_id']) && ($_SESSION['role'] ?? '') === 'instructor') {
+            $courses = $courseRepo->getAllCourses((int) $_SESSION['user_id']);
+        } else {
+            $courses = $courseRepo->getAllCourses();
+        }
+        $useNewBackend = true;
     }
-    $courses = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
-    error_log("DB error in courses-view.php: " . $e->getMessage());
+    error_log("DB backend error in courses-view.php: " . $e->getMessage());
     $courses = [];
+    $useNewBackend = false;
+}
+
+if (!$useNewBackend) {
+    try {
+        if (isset($_SESSION['user_id']) && ($_SESSION['role'] ?? '') === 'instructor') {
+            // Instructor: show only their courses
+            $stmt = $pdo->prepare("
+                SELECT c.*, u.name AS instructor_name, u.profile_picture, cat.name AS category_name
+                FROM courses c
+                JOIN users u ON c.instructor_id = u.id
+                LEFT JOIN categories cat ON c.category_id = cat.id
+                WHERE c.instructor_id = ?
+                ORDER BY c.id DESC
+            ");
+            $stmt->execute([$_SESSION['user_id']]);
+        } else {
+            // Public / other roles: show all courses
+            $stmt = $pdo->prepare("
+                SELECT c.*, u.name AS instructor_name, u.profile_picture, cat.name AS category_name
+                FROM courses c
+                JOIN users u ON c.instructor_id = u.id
+                LEFT JOIN categories cat ON c.category_id = cat.id
+                ORDER BY c.id DESC
+            ");
+            $stmt->execute();
+        }
+        $courses = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("DB error in courses-view.php: " . $e->getMessage());
+        $courses = [];
+    }
 }
 
 function resolveAdminImagePath(string $storedPath, string $basePrefix, string $fallback): string {

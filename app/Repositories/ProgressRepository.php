@@ -28,6 +28,16 @@ class ProgressRepository extends BaseRepository {
     }
 
     /**
+     * Get lesson progress record without creating it.
+     */
+    public function getProgressByLesson($user_id, $lesson_id) {
+        return $this->fetchOne(
+            "SELECT * FROM lesson_progress WHERE user_id = ? AND lesson_id = ? LIMIT 1",
+            [$user_id, $lesson_id]
+        );
+    }
+
+    /**
      * Mark lesson as completed.
      */
     public function markComplete($user_id, $lesson_id) {

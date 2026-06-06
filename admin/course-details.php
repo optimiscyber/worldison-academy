@@ -2,6 +2,10 @@
 session_start();
 require_once "inc/db.php";
 require_once "../inc/auth.php";
+require_once __DIR__ . '/../app/Repositories/CourseRepository.php';
+require_once __DIR__ . '/../app/Repositories/LessonRepository.php';
+require_once __DIR__ . '/../app/Repositories/EnrollmentRepository.php';
+require_once __DIR__ . '/../app/Repositories/ProgressRepository.php';
 
 if (!isset($_SESSION['user_id'])) {
     header("Location: ../login.php");
@@ -17,54 +21,106 @@ if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
 
 $course_id = (int) $_GET['id'];
 
-// Fetch course details with instructor info
-$stmt = $pdo->prepare("
-    SELECT c.*, u.name AS instructor_name, u.profile_picture, u.bio
-    FROM courses c
-    JOIN users u ON c.instructor_id = u.id
-    WHERE c.id = ? LIMIT 1
-");
-$stmt->execute([$course_id]);
-$course = $stmt->fetch(PDO::FETCH_ASSOC);
-
-if (!$course) {
-    die("Course not found.");
-}
-
-// Check enrollment status
-$enroll_stmt = $pdo->prepare("SELECT * FROM enrollments WHERE user_id = ? AND course_id = ? AND status='active'");
-$enroll_stmt->execute([$user_id, $course_id]);
-$is_enrolled = $enroll_stmt->fetch(PDO::FETCH_ASSOC);
-
-// For paid courses, check payment
+$course = null;
+$lessons = [];
+$is_enrolled = false;
 $payment_ok = true;
-if ($course['type'] === 'paid' && !$is_enrolled) {
-    $payment_ok = false;
-}
-
-// Fetch lessons with progress info
-$lesson_stmt = $pdo->prepare("
-    SELECT l.*, 
-           COALESCE(lp.completed,0) AS completed
-    FROM lessons l
-    LEFT JOIN lesson_progress lp 
-        ON lp.lesson_id = l.id AND lp.user_id = ?
-    WHERE l.course_id = ? AND l.status='published'
-    ORDER BY l.order_no ASC, l.id ASC
-");
-$lesson_stmt->execute([$user_id, $course_id]);
-$lessons = $lesson_stmt->fetchAll(PDO::FETCH_ASSOC);
-
-$total_lessons = count($lessons);
-
+$total_lessons = 0;
 $completed_lessons = 0;
-foreach ($lessons as $l) {
-    if (!empty($l['completed'])) {
-        $completed_lessons++;
+$progress_percent = 0;
+
+$useNewBackend = false;
+try {
+    if (class_exists('CourseRepository') && class_exists('LessonRepository') && class_exists('EnrollmentRepository') && class_exists('ProgressRepository')) {
+        $courseRepo = new CourseRepository($pdo);
+        $lessonRepo = new LessonRepository($pdo);
+        $enrollmentRepo = new EnrollmentRepository($pdo);
+        $progressRepo = new ProgressRepository($pdo);
+
+        $course = $courseRepo->getCourseByIdForAdmin($course_id);
+        if ($course) {
+            $is_enrolled = (bool) $enrollmentRepo->getEnrollment($user_id, $course_id);
+            $payment_ok = !($course['type'] === 'paid' && !$is_enrolled);
+
+            $lessons = $lessonRepo->getLessonsByCourseId($course_id);
+            $lesson_ids = array_column($lessons, 'id');
+            $progress_rows = $lesson_ids ? $progressRepo->getLessonsProgress($user_id, $lesson_ids) : [];
+
+            $progress_map = [];
+            foreach ($progress_rows as $row) {
+                $progress_map[(int)$row['lesson_id']] = (int)$row['completed'];
+            }
+
+            foreach ($lessons as &$lesson) {
+                $lesson['completed'] = $progress_map[(int)$lesson['id']] ?? 0;
+            }
+            unset($lesson);
+
+            $total_lessons = count($lessons);
+            foreach ($lessons as $lesson) {
+                if (!empty($lesson['completed'])) {
+                    $completed_lessons++;
+                }
+            }
+            $progress_percent = $total_lessons ? round(($completed_lessons / $total_lessons) * 100) : 0;
+            $useNewBackend = true;
+        }
     }
+} catch (PDOException $e) {
+    error_log("DB backend error in course-details.php: " . $e->getMessage());
+    $useNewBackend = false;
 }
 
-$progress_percent = $total_lessons ? round(($completed_lessons / $total_lessons) * 100) : 0;
+if (!$useNewBackend) {
+    // Legacy fallback path: preserve existing SQL and writes
+    $stmt = $pdo->prepare("
+        SELECT c.*, u.name AS instructor_name, u.profile_picture, u.bio
+        FROM courses c
+        JOIN users u ON c.instructor_id = u.id
+        WHERE c.id = ? LIMIT 1
+    ");
+    $stmt->execute([$course_id]);
+    $course = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$course) {
+        die("Course not found.");
+    }
+
+    // Check enrollment status
+    $enroll_stmt = $pdo->prepare("SELECT * FROM enrollments WHERE user_id = ? AND course_id = ? AND status='active'");
+    $enroll_stmt->execute([$user_id, $course_id]);
+    $is_enrolled = $enroll_stmt->fetch(PDO::FETCH_ASSOC);
+
+    // For paid courses, check payment
+    $payment_ok = true;
+    if ($course['type'] === 'paid' && !$is_enrolled) {
+        $payment_ok = false;
+    }
+
+    // Fetch lessons with progress info
+    $lesson_stmt = $pdo->prepare("
+        SELECT l.*, 
+               COALESCE(lp.completed,0) AS completed
+        FROM lessons l
+        LEFT JOIN lesson_progress lp 
+            ON lp.lesson_id = l.id AND lp.user_id = ?
+        WHERE l.course_id = ? AND l.status='published'
+        ORDER BY l.order_no ASC, l.id ASC
+    ");
+    $lesson_stmt->execute([$user_id, $course_id]);
+    $lessons = $lesson_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $total_lessons = count($lessons);
+
+    $completed_lessons = 0;
+    foreach ($lessons as $l) {
+        if (!empty($l['completed'])) {
+            $completed_lessons++;
+        }
+    }
+
+    $progress_percent = $total_lessons ? round(($completed_lessons / $total_lessons) * 100) : 0;
+}
 
 // Thumbnail path
 $thumbnail = $course['thumbnail'] 

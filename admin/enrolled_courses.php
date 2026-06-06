@@ -24,8 +24,8 @@ $stmt = $pdo->prepare("
         t.payment_status
     FROM enrollments e
     JOIN courses c ON e.course_id = c.id
-    LEFT JOIN transactions t ON t.course_id = c.id AND t.user_id = e.student_id
-    WHERE e.student_id = ?
+    LEFT JOIN transactions t ON t.course_id = c.id AND t.user_id = e.user_id
+    WHERE e.user_id = ?
     ORDER BY e.enrolled_at DESC
 ");
 $stmt->execute([$user_id]);

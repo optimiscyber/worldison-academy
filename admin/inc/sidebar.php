@@ -21,9 +21,7 @@ if ($userId) {
     }
 }
 
-if (!isset($basePath)) {
-    $basePath = (strpos($_SERVER['REQUEST_URI'], '/admin/') !== false) ? '../' : './';
-}
+$basePath = $basePath ?? './';
 
 $currentPage = basename($_SERVER['PHP_SELF']);
 function isActive($page, $currentPage) { return $page === $currentPage ? ' active' : ''; }
@@ -64,17 +62,17 @@ function isActive($page, $currentPage) { return $page === $currentPage ? ' activ
             </a>
 
             <ul class="dropdown-menu dropdown-menu-start" aria-labelledby="sidebarProfileDropdown">
-                <li><a class="dropdown-item" href="<?= $basePath ?>admin/profile.php"><i class="fa fa-user me-2"></i> Profile</a></li>
-                <li><a class="dropdown-item" href="<?= $basePath ?>admin/settings.php"><i class="fa fa-user me-2"></i> Settings</a></li>
-                <li><a class="dropdown-item" href="<?= $basePath ?>admin/payments.php"><i class="fa fa-cog me-2"></i> My payments</a></li>
+                <li><a class="dropdown-item" href="<?= $basePath ?>profile.php"><i class="fa fa-user me-2"></i> Profile</a></li>
+                <li><a class="dropdown-item" href="<?= $basePath ?>settings.php"><i class="fa fa-user me-2"></i> Settings</a></li>
+                <li><a class="dropdown-item" href="<?= $basePath ?>payments.php"><i class="fa fa-cog me-2"></i> My payments</a></li>
 
                 <?php if ($role === 'instructor'): ?>
-                    <li><a class="dropdown-item" href="<?= $basePath ?>admin/upload_course.php"><i class="fa fa-upload me-2"></i> Upload Course</a></li>
-                    <li><a class="dropdown-item" href="<?= $basePath ?>admin/my_courses.php"><i class="fa fa-book me-2"></i> My Courses</a></li>
+                    <li><a class="dropdown-item" href="<?= $basePath ?>upload_course.php"><i class="fa fa-upload me-2"></i> Upload Course</a></li>
+                    <li><a class="dropdown-item" href="<?= $basePath ?>my_courses.php"><i class="fa fa-book me-2"></i> My Courses</a></li>
                 <?php endif; ?>
 
                 <?php if (in_array($role, ['admin','ceo'])): ?>
-                    <li><a class="dropdown-item" href="<?= $basePath ?>admin/all_payments.php"><i class="fa fa-cog me-2"></i> All Payments</a></li>
+                    <li><a class="dropdown-item" href="<?= $basePath ?>all_payments.php"><i class="fa fa-cog me-2"></i> All Payments</a></li>
                 <?php endif; ?>
 
                 <li><hr class="dropdown-divider"></li>
@@ -84,20 +82,20 @@ function isActive($page, $currentPage) { return $page === $currentPage ? ' activ
 
         <!-- MENU LINKS -->
         <div class="navbar-nav w-100">
-            <a href="<?= $basePath ?>admin/dashboard.php" class="nav-item nav-link<?= isActive('dashboard.php',$currentPage) ?>"><i class="fa fa-tachometer-alt me-2"></i>Dashboard</a>
+                <a href="<?= $basePath ?>dashboard.php" class="nav-item nav-link<?= isActive('dashboard.php',$currentPage) ?>"><i class="fa fa-tachometer-alt me-2"></i>Dashboard</a>
 
-            <a href="<?= $basePath ?>admin/courses-view.php" class="nav-item nav-link<?= isActive('courses-view.php',$currentPage) ?>"><i class="fa fa-book me-2"></i>Courses</a>
+            <a href="<?= $basePath ?>courses-view.php" class="nav-item nav-link<?= isActive('courses-view.php',$currentPage) ?>"><i class="fa fa-book me-2"></i>Courses</a>
 
             <?php if (in_array($role,['instructor','admin','ceo'])): ?>
-                <a href="<?= $basePath ?>admin/upload_course.php" class="nav-item nav-link<?= isActive('upload_course.php',$currentPage) ?>"><i class="fa fa-upload me-2"></i>Upload Course</a>
-                <a href="<?= $basePath ?>admin/my_courses.php" class="nav-item nav-link<?= isActive('my_courses.php',$currentPage) ?>"><i class="fa fa-book-open me-2"></i>My Courses</a>
+                <a href="<?= $basePath ?>upload_course.php" class="nav-item nav-link<?= isActive('upload_course.php',$currentPage) ?>"><i class="fa fa-upload me-2"></i>Upload Course</a>
+                <a href="<?= $basePath ?>my_courses.php" class="nav-item nav-link<?= isActive('my_courses.php',$currentPage) ?>"><i class="fa fa-book-open me-2"></i>My Courses</a>
             <?php endif; ?>
 
             <?php if (in_array($role,['admin','ceo'])): ?>
-                <a href="<?= $basePath ?>admin/manage_users.php" class="nav-item nav-link<?= isActive('manage_users.php',$currentPage) ?>"><i class="fa fa-users me-2"></i>Manage Users</a>
-                <a href="<?= $basePath ?>admin/manage_courses.php" class="nav-item nav-link<?= isActive('manage_courses.php',$currentPage) ?>"><i class="fa fa-book me-2"></i>Manage Courses</a>
-                <a href="<?= $basePath ?>admin/add_categories.php" class="nav-item nav-link<?= isActive('add_categories.php',$currentPage) ?>"><i class="fa fa-folder me-2"></i>Add Categories</a>
-                <a href="<?= $basePath ?>admin/certificates.php" class="nav-item nav-link<?= isActive('approve_certificate.php',$currentPage) ?>"><i class="fa fa-file-alt me-2"></i>Manage Certificate</a>
+                <a href="<?= $basePath ?>manage_users.php" class="nav-item nav-link<?= isActive('manage_users.php',$currentPage) ?>"><i class="fa fa-users me-2"></i>Manage Users</a>
+                <a href="<?= $basePath ?>manage_courses.php" class="nav-item nav-link<?= isActive('manage_courses.php',$currentPage) ?>"><i class="fa fa-book me-2"></i>Manage Courses</a>
+                <a href="<?= $basePath ?>add_categories.php" class="nav-item nav-link<?= isActive('add_categories.php',$currentPage) ?>"><i class="fa fa-folder me-2"></i>Add Categories</a>
+                <a href="<?= $basePath ?>certificates.php" class="nav-item nav-link<?= isActive('approve_certificate.php',$currentPage) ?>"><i class="fa fa-file-alt me-2"></i>Manage Certificate</a>
             <?php endif; ?>
 
             <a href="<?= $basePath ?>index.php" class="nav-item nav-link<?= isActive('index.php',$currentPage) ?>"><i class="fa fa-home me-2"></i>Landing Page</a>

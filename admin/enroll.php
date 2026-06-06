@@ -42,7 +42,7 @@ if ($course['type'] === 'paid') {
 // Course is free: attempt to enroll
 try {
     // Insert enrollment only if not exists
-    $stmt = $pdo->prepare("INSERT IGNORE INTO enrollments (student_id, course_id) VALUES (?, ?)");
+    $stmt = $pdo->prepare("INSERT IGNORE INTO enrollments (user_id, course_id, enrolled_at, status) VALUES (?, ?, NOW(), 'active')");
     $stmt->execute([$user_id, $course_id]);
 
     // Check if row was inserted or existing enrollment present

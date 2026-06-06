@@ -3,6 +3,10 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 require_once "inc/db.php";
 require_once "../inc/auth.php";
+require_once __DIR__ . '/../app/Repositories/LessonRepository.php';
+require_once __DIR__ . '/../app/Repositories/EnrollmentRepository.php';
+require_once __DIR__ . '/../app/Repositories/ProgressRepository.php';
+require_once __DIR__ . '/../app/Repositories/CourseRepository.php';
 
 if (empty($_SESSION['user_id'])) {
     header('Location: ../login.php');
@@ -14,79 +18,141 @@ $user_id = $_SESSION['user_id'];
 $lesson_id = intval($_GET['id'] ?? 0);
 if (!$lesson_id) die("Invalid lesson ID.");
 
-// Fetch lesson + course
-$stmt = $pdo->prepare("
-    SELECT l.*, c.title AS course_title, c.id AS course_id, c.type, u.name AS instructor_name
-    FROM lessons l
-    JOIN courses c ON l.course_id=c.id
-    JOIN users u ON c.instructor_id=u.id
-    WHERE l.id=?
-");
-$stmt->execute([$lesson_id]);
-$lesson = $stmt->fetch(PDO::FETCH_ASSOC);
-if (!$lesson) die("Lesson not found.");
+$useNewBackend = false;
+if (class_exists('LessonRepository') && class_exists('EnrollmentRepository') && class_exists('ProgressRepository') && class_exists('CourseRepository')) {
+    $lessonRepo = new LessonRepository($pdo);
+    $enrollmentRepo = new EnrollmentRepository($pdo);
+    $progressRepo = new ProgressRepository($pdo);
+    $courseRepo = new CourseRepository($pdo);
 
-$course_id = $lesson['course_id'];
-$_SESSION['last_course_id'] = $course_id;
+    $lesson = $lessonRepo->getLessonById($lesson_id);
+    if ($lesson) {
+        $course_id = $lesson['course_id'];
+        $progress = $progressRepo->getProgressByLesson($user_id, $lesson_id);
+        if ($progress !== false) {
+            $isEnrolled = $enrollmentRepo->isEnrolled($user_id, $course_id);
+            $all_lessons = $lessonRepo->getLessonsByCourseId($course_id);
+            $lesson_progress_rows = $progressRepo->getLessonsProgress($user_id, array_column($all_lessons, 'id'));
+            $progress_map = [];
+            foreach ($lesson_progress_rows as $row) {
+                $progress_map[(int)$row['lesson_id']] = (int)$row['completed'];
+            }
+            foreach ($all_lessons as &$l) {
+                $l['completed'] = $progress_map[(int)$l['id']] ?? 0;
+            }
+            unset($l);
 
-// Use actual schema field for course type and fallback if not present
-$course_type = strtolower(trim($lesson['type'] ?? 'free'));
-
-// Check enrollment
-$enr = $pdo->prepare("SELECT 1 FROM enrollments WHERE user_id=? AND course_id=?");
-$enr->execute([$user_id, $course_id]);
-$isEnrolled = (bool)$enr->fetchColumn();
-
-if ($course_type === 'paid' && !$isEnrolled) {
-    echo "<script>alert('You must enroll in this course first!');window.location='view_courses.php?id={$course_id}';</script>";
-    exit;
+            $attachments = $lessonRepo->getLessonAttachments($lesson_id);
+            $course_type = strtolower(trim($lesson['type'] ?? 'free'));
+            $prev_id = null;
+            $next_id = null;
+            $ids = array_column($all_lessons, 'id');
+            $current_index = array_search($lesson_id, $ids);
+            if ($current_index !== false) {
+                $prev_id = $all_lessons[$current_index - 1]['id'] ?? null;
+                $next_id = $all_lessons[$current_index + 1]['id'] ?? null;
+            }
+            $hasTest = $lessonRepo->hasLessonTest($lesson_id);
+            $total_lessons = $courseRepo->getTotalLessonCount($course_id);
+            $completed_lessons = $progressRepo->getCompletedLessonCount($user_id, $course_id);
+            $useNewBackend = true;
+        }
+    }
 }
 
-// Progress
-$prog = $pdo->prepare("SELECT completed FROM lesson_progress WHERE user_id=? AND lesson_id=?");
-$prog->execute([$user_id,$lesson_id]);
-$progress = $prog->fetch(PDO::FETCH_ASSOC);
+if (!$useNewBackend) {
+    // Legacy fallback path: preserve existing SQL behavior and writes
+    require_once __DIR__ . '/../app/Services/LessonService.php';
+    require_once __DIR__ . '/../app/Services/EnrollmentService.php';
 
-if (!$progress) {
-    $pdo->prepare("
-        INSERT INTO lesson_progress (user_id, lesson_id, course_id, completed, completed_at)
-        VALUES (?, ?, ?, 0, NULL)
-    ")->execute([$user_id, $lesson_id, $course_id]);
+    $lessonService = new LessonService($pdo);
+    $enrollmentService = new EnrollmentService($pdo);
+    $progressRepository = new ProgressRepository($pdo);
 
-    // Initialize $progress to avoid warnings
-    $progress = ['completed' => 0];
+    // Fetch lesson + course
+    $stmt = $pdo->prepare("
+        SELECT l.*, c.title AS course_title, c.id AS course_id, c.type, u.name AS instructor_name
+        FROM lessons l
+        JOIN courses c ON l.course_id=c.id
+        JOIN users u ON c.instructor_id=u.id
+        WHERE l.id=?
+    ");
+    $stmt->execute([$lesson_id]);
+    $lesson = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$lesson) die("Lesson not found.");
+
+    $course_id = $lesson['course_id'];
+    $_SESSION['last_course_id'] = $course_id;
+
+    // Use actual schema field for course type and fallback if not present
+    $course_type = strtolower(trim($lesson['type'] ?? 'free'));
+
+    // Check enrollment
+    $enr = $pdo->prepare("SELECT 1 FROM enrollments WHERE user_id=? AND course_id=?");
+    $enr->execute([$user_id, $course_id]);
+    $isEnrolled = (bool)$enr->fetchColumn();
+
+    if ($course_type === 'paid' && !$isEnrolled) {
+        echo "<script>alert('You must enroll in this course first!');window.location='view_courses.php?id={$course_id}';</script>";
+        exit;
+    }
+
+    // Progress
+    $prog = $pdo->prepare("SELECT completed FROM lesson_progress WHERE user_id=? AND lesson_id=?");
+    $prog->execute([$user_id,$lesson_id]);
+    $progress = $prog->fetch(PDO::FETCH_ASSOC);
+
+    if (!$progress) {
+        $pdo->prepare("
+            INSERT INTO lesson_progress (user_id, lesson_id, course_id, completed, completed_at)
+            VALUES (?, ?, ?, 0, NULL)
+        ")->execute([$user_id, $lesson_id, $course_id]);
+
+        // Initialize $progress to avoid warnings
+        $progress = ['completed' => 0];
+    }
+
+    // Sidebar lessons
+    $lessons_stmt = $pdo->prepare("
+        SELECT l.id, l.title, l.order_no,
+            COALESCE(lp.completed,0) AS completed
+        FROM lessons l
+        LEFT JOIN lesson_progress lp 
+          ON lp.lesson_id=l.id AND lp.user_id=?
+        WHERE l.course_id=?
+        ORDER BY l.order_no ASC, l.id ASC
+    ");
+    $lessons_stmt->execute([$user_id,$course_id]);
+    $all_lessons = $lessons_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $attachments_stmt = $pdo->prepare("SELECT id, file_name, file_path, file_type FROM lesson_attachments WHERE lesson_id = ? ORDER BY created_at ASC");
+    $attachments_stmt->execute([$lesson_id]);
+    $attachments = $attachments_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $ids = array_column($all_lessons,'id');
+    $current_index = array_search($lesson_id,$ids);
+
+    $prev_id = $all_lessons[$current_index - 1]['id'] ?? null;
+    $next_id = $all_lessons[$current_index + 1]['id'] ?? null;
+
+    // Check test
+    $testCheck = $pdo->prepare("SELECT COUNT(*) FROM lesson_tests WHERE lesson_id=?");
+    $testCheck->execute([$lesson_id]);
+    $hasTest = $testCheck->fetchColumn() > 0;
+
+    // Certificate progress
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM lessons WHERE course_id=?");
+    $stmt->execute([$course_id]);
+    $total_lessons = (int)$stmt->fetchColumn();
+
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) FROM lesson_progress
+        WHERE user_id=? AND course_id=? AND completed=1
+    ");
+    $stmt->execute([$user_id, $course_id]);
+    $completed_lessons = (int)$stmt->fetchColumn();
 }
 
-
-// Sidebar lessons
-$lessons_stmt = $pdo->prepare("
-    SELECT l.id, l.title, l.order_no,
-        COALESCE(lp.completed,0) AS completed
-    FROM lessons l
-    LEFT JOIN lesson_progress lp 
-      ON lp.lesson_id=l.id AND lp.user_id=?
-    WHERE l.course_id=?
-    ORDER BY l.order_no ASC, l.id ASC
-");
-$lessons_stmt->execute([$user_id,$course_id]);
-$all_lessons = $lessons_stmt->fetchAll(PDO::FETCH_ASSOC);
-
-$attachments_stmt = $pdo->prepare("SELECT id, file_name, file_path, file_type FROM lesson_attachments WHERE lesson_id = ? ORDER BY created_at ASC");
-$attachments_stmt->execute([$lesson_id]);
-$attachments = $attachments_stmt->fetchAll(PDO::FETCH_ASSOC);
-
-$ids = array_column($all_lessons,'id');
-$current_index = array_search($lesson_id,$ids);
-
-$prev_id = $all_lessons[$current_index - 1]['id'] ?? null;
-$next_id = $all_lessons[$current_index + 1]['id'] ?? null;
-
-// Check test
-$testCheck = $pdo->prepare("SELECT COUNT(*) FROM lesson_tests WHERE lesson_id=?");
-$testCheck->execute([$lesson_id]);
-$hasTest = $testCheck->fetchColumn() > 0;
-
-// Next link
 if ($hasTest) {
     $nextLink = "take_test.php?lesson_id=" . $lesson_id;
 } elseif ($next_id) {
@@ -98,25 +164,47 @@ if ($hasTest) {
 // VIDEO PARSING
 $video = trim($lesson['video_url']);
 $ytID = null;
-if (preg_match('#(?:youtu\.be/|youtube\.com/(?:watch\?v=|embed/))([^&?/]+)#', $video, $m)) {
-    $ytID = $m[1];
+$ytOriginalUrl = null;
+$ytEmbedUrl = null;
+if (!empty($video)) {
+    $ytOriginalUrl = $video;
+    $videoUrl = trim($video);
+    $videoUrl = preg_replace('#^https?://#i', 'https://', $videoUrl);
+
+    $parts = parse_url($videoUrl);
+    $host = strtolower($parts['host'] ?? '');
+    $host = preg_replace('#^www\.?#', '', $host);
+    $path = $parts['path'] ?? '';
+    $query = $parts['query'] ?? '';
+
+    if ($host === 'youtu.be') {
+        $ytID = ltrim($path, '/');
+    } elseif (in_array($host, ['youtube.com', 'm.youtube.com', 'music.youtube.com'], true)) {
+        if (preg_match('#^/embed/([A-Za-z0-9_-]{11})#', $path, $m)
+            || preg_match('#^/shorts/([A-Za-z0-9_-]{11})#', $path, $m)
+        ) {
+            $ytID = $m[1];
+        } elseif (strpos($path, '/watch') === 0) {
+            parse_str($query, $queryParams);
+            $ytID = $queryParams['v'] ?? null;
+        } elseif (preg_match('#^/([A-Za-z0-9_-]{11})$#', $path, $m)) {
+            $ytID = $m[1];
+        }
+    }
+
+    if (!empty($ytID) && preg_match('#^[A-Za-z0-9_-]{11}$#', $ytID)) {
+        $origin = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https://' : 'http://') . ($_SERVER['HTTP_HOST'] ?? '');
+        $ytEmbedUrl = 'https://www.youtube.com/embed/' . $ytID . '?rel=0&modestbranding=1&playsinline=1';
+    }
 }
 
 // Detect lesson type
-$hasVideo = (!empty($video) || !empty($ytID));
+$hasVideo = !empty($video);
 $hasText = !empty($lesson['content']);
 
 // Certificate progress
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM lessons WHERE course_id=?");
-$stmt->execute([$course_id]);
-$total_lessons = (int)$stmt->fetchColumn();
-
-$stmt = $pdo->prepare("
-    SELECT COUNT(*) FROM lesson_progress
-    WHERE user_id=? AND course_id=? AND completed=1
-");
-$stmt->execute([$user_id, $course_id]);
-$completed_lessons = (int)$stmt->fetchColumn();
+$total_lessons = $lesson['course_progress']['total'] ?? 0;
+$completed_lessons = $lesson['course_progress']['completed'] ?? 0;
 
 $all_completed = ($completed_lessons >= $total_lessons);
 
@@ -144,355 +232,7 @@ include __DIR__.'/inc/navbar.php';
 
 <div class="row">
 
-<!-- SIDEBAR -->
-<div class="col-lg-3 mb-3">
-  <div class="bg-light p-3 rounded shadow-sm">
-    <?php if (!empty($attachments)): ?>
-        <div class="mt-4 border-top pt-3">
-            <h5 class="fw-bold">Lesson Attachments</h5>
-            <ul class="list-group list-group-flush">
-                <?php foreach ($attachments as $file): ?>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        <span><?= htmlspecialchars($file['file_name']) ?></span>
-                        <a href="<?= htmlspecialchars($file['file_path']) ?>" target="_blank" class="btn btn-sm btn-outline-secondary">Download</a>
-                    </li>
-                <?php endforeach; ?>
-            </ul>
-        </div>
-    <?php endif; ?>
-    <h5 class="fw-bold mb-3"><?= htmlspecialchars($lesson['course_title']) ?></h5>
+<?php include __DIR__.'/inc/watch_lesson_sidebar.php'; ?>
+<?php include __DIR__.'/inc/watch_lesson_main.php'; ?>
 
-    <ul class="list-group">
-      <?php foreach ($all_lessons as $index => $l):
-          $locked = ($index > 0 && !$all_lessons[$index-1]['completed']);
-      ?>
-      <a class="list-group-item list-group-item-action <?= $l['id']==$lesson_id?'active':'' ?> <?= $locked?'disabled locked':'' ?>" 
-         data-lesson-id="<?= (int)$l['id'] ?>"
-         href="<?= $locked?'#':'watch_lesson.php?id='.$l['id'] ?>">
-         <div class="d-flex justify-content-between align-items-center w-100">
-             <div class="lesson-title"><?= htmlspecialchars($l['title']) ?></div>
-             <div class="lesson-meta">
-                 <?php if ($l['completed']): ?>
-                     <span class="badge bg-success">Completed</span>
-                 <?php elseif ($locked): ?>
-                     <span class="badge bg-secondary">Locked</span>
-                 <?php endif; ?>
-             </div>
-         </div>
-      </a>
-      <?php endforeach; ?>
-    </ul>
-
-  </div>
-</div>
-
-<!-- MAIN LESSON AREA -->
-<div class="col-lg-9">
-<style>
-#readingProgress {
-    position: fixed;
-    top: 0; left: 0;
-    height: 4px;
-    background: #007bff;
-    width: 0%;
-    z-index: 99999;
-}
-</style>
-<div id="readingProgress"></div>
-
-<script>
-document.addEventListener("scroll", function () {
-    let scrollTop = document.documentElement.scrollTop;
-    let height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
-    let progress = (scrollTop / height) * 100;
-    document.getElementById("readingProgress").style.width = progress + "%";
-});
-</script>
-
-<div class="bg-light p-4 rounded shadow-sm">
-
-<?php $progress_percent = $total_lessons ? (int) round(($completed_lessons / $total_lessons) * 100) : 0; ?>
-<div class="mb-3">
-    <div class="d-flex justify-content-between align-items-center mb-1">
-        <div>Progress: <strong><?= $completed_lessons ?>/<?= $total_lessons ?> (<?= $progress_percent ?>%)</strong></div>
-        <div class="small text-muted">Lesson: <?= htmlspecialchars($lesson['title']) ?></div>
-    </div>
-    <div class="progress" style="height:8px;">
-        <div class="progress-bar bg-success" role="progressbar" style="width: <?= $progress_percent ?>%"></div>
-    </div>
-</div>
-
-    <h3><?= htmlspecialchars($lesson['title']) ?></h3>
-    <p class="text-muted">Instructor: <?= htmlspecialchars($lesson['instructor_name']) ?></p>
-
-<!-- ========================= -->
-<!-- TEXT-ONLY LESSON HANDLING -->
-<!-- ========================= -->
-
-<?php if (!$hasVideo && $hasText): ?>
-    <div class="alert alert-info">This is a text-only lesson.</div>
-<?php endif; ?>
-
-<!-- VIDEO SECTION -->
-<?php if ($hasVideo): ?>
-    <?php if ($ytID): ?>
-        <div class="ratio ratio-16x9 mb-4">
-            <iframe src="https://www.youtube.com/embed/<?= $ytID ?>?rel=0" allowfullscreen></iframe>
-        </div>
-    <?php elseif ($video): ?>
-        <div class="ratio ratio-16x9 mb-4">
-            <video class="w-100 h-100" controls>
-                <source src="<?= htmlspecialchars($video) ?>">
-            </video>
-        </div>
-    <?php endif; ?>
-<?php endif; ?>
-
-<!-- NOTES / TEXT CONTENT -->
-<!-- NOTES / TEXT CONTENT -->
-<?php if(!empty($lesson['content'])): ?>
-<div class="bg-white p-3 rounded shadow-sm mb-3">
-
-    <h4 class="fw-bold mb-3">Lesson Notes</h4>
-
-    <!-- Table of Contents -->
-    <div id="toc" class="mb-3 p-3 border rounded bg-light"></div>
-
-    <!-- Content -->
-    <div id="lessonContent">
-        <?= $lesson['content'] ?>
-    </div>
-
-    <?php if (!empty($progress['completed'])): ?>
-        <div class="alert alert-success">This lesson is already completed.</div>
-    <?php else: ?>
-        <button id="textMarkComplete" class="btn btn-success mt-3">Mark Lesson Complete</button>
-    <?php endif; ?>
-
-    </div>
-
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-    const content = document.getElementById("lessonContent");
-    const toc = document.getElementById("toc");
-
-    if (!content) return;
-
-    let headings = content.querySelectorAll("h1, h2, h3");
-    if (headings.length === 0) return;
-
-    // Build TOC
-    let tocList = "<h5 class='fw-bold'>📘 Table of Contents</h5><ul>";
-    headings.forEach((h, i) => {
-        let id = "sec_" + i;
-        h.id = id;
-        tocList += `<li><a href="#${id}">${h.innerText}</a></li>`;
-    });
-    tocList += "</ul>";
-    toc.innerHTML = tocList;
-
-    // Collapsible Sections
-    headings.forEach((h) => {
-        let wrapper = document.createElement("div");
-        wrapper.classList.add("mb-4");
-
-        let toggleBtn = document.createElement("button");
-        toggleBtn.classList.add("btn", "btn-sm", "btn-outline-primary", "mb-2");
-        toggleBtn.innerText = "Toggle Section";
-
-        let sectionBlock = document.createElement("div");
-        sectionBlock.classList.add("border", "rounded", "p-3");
-
-        // Move heading + next paragraphs until next heading
-        sectionBlock.appendChild(h.cloneNode(true));
-
-        let next = h.nextElementSibling;
-        while (next && !["H1","H2","H3"].includes(next.tagName)) {
-            let toMove = next;
-            next = next.nextElementSibling;
-            sectionBlock.appendChild(toMove);
-        }
-
-        wrapper.appendChild(toggleBtn);
-        wrapper.appendChild(sectionBlock);
-        toggleBtn.addEventListener("click", () => {
-            sectionBlock.classList.toggle("d-none");
-        });
-
-        content.insertBefore(wrapper, h);
-    });
-});
-</script>
-<?php endif; ?>
-
-
-
-<!-- NAVIGATION + CERTIFICATE -->
-<div class="d-flex justify-content-between align-items-center mt-4">
-
-    <?php if($prev_id): ?>
-        <a class="btn btn-outline-secondary" href="watch_lesson.php?id=<?= $prev_id ?>">&laquo; Previous</a>
-    <?php else: ?>
-        <span></span>
-    <?php endif; ?>
-
-    <div>
-    <?php if ($next_id): ?>
-        <a class="btn btn-primary" href="<?= $nextLink ?>">Next &raquo;</a>
-
-    <?php else: ?>
-        <!-- LAST LESSON -->
-        <?php if ($all_completed): ?>
-        <div class="p-3 border rounded bg-light text-center">
-            <h4 class="fw-bold mb-3">🎉 Course Completed – Certificate</h4>
-
-            <?php if (!$certificate): ?>
-                <a href="cert_request.php?course_id=<?= $course_id ?>" class="btn btn-success">
-                    Request Certificate
-                </a>
-
-            <?php else: ?>
-                <p class="mb-2">Certificate Status: <strong><?= ucfirst($certificate['status']) ?></strong></p>
-
-                <?php if ($certificate['status']==='rejected' && !empty($certificate['reason'])): ?>
-                <div class="alert alert-danger">
-                    <strong>Reason:</strong> <?= htmlspecialchars($certificate['reason']) ?>
-                </div>
-                <?php endif; ?>
-
-                <?php if ($certificate['status']==='approved' && $certificate['certificate_url']): ?>
-                <a href="download_certificate.php?id=<?= $certificate['id'] ?>" class="btn btn-primary">
-                    Download Certificate
-                </a>
-                <?php endif; ?>
-
-                <?php if ($certificate['status']==='pending'): ?>
-                <div class="alert alert-info mt-2">
-                    Your certificate request is being reviewed.
-                </div>
-                <?php endif; ?>
-            <?php endif; ?>
-        </div>
-
-        <?php else: ?>
-            <button class="btn btn-secondary" disabled>Complete all lessons to unlock Certificate</button>
-        <?php endif; ?>
-    <?php endif; ?>
-    </div>
-</div>
-
-</div>
-</div>
-</div>
-</div>
-
-<script>
-(function(){
-    const lessonId = <?= json_encode($lesson_id) ?>;
-    const markUrl = 'ajax/mark_complete.php';
-
-    async function markCompleted() {
-        try {
-            const response = await fetch(markUrl, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {'Content-Type':'application/x-www-form-urlencoded'},
-                body: 'lesson_id=' + encodeURIComponent(lessonId)
-            });
-            const data = await response.json();
-
-            if (!data.ok) {
-                alert('Error: ' + (data.error || 'Unknown error'));
-                return;
-            }
-
-            // Update UI: buttons
-            const textBtn = document.getElementById('textMarkComplete');
-            if (textBtn) { textBtn.disabled = true; textBtn.innerText = 'Marked'; }
-            const ytBtn = document.getElementById('markCompleteBtn');
-            if (ytBtn) { ytBtn.disabled = true; ytBtn.innerText = 'Marked'; }
-
-            // Update sidebar item for current lesson
-            try {
-                const item = document.querySelector(`[data-lesson-id='${lessonId}']`);
-                if (item) {
-                    item.classList.remove('locked','disabled');
-                    const meta = item.querySelector('.lesson-meta');
-                    if (meta) meta.innerHTML = '<span class="badge bg-success">Completed</span>';
-                }
-
-                // Unlock next lesson if present
-                const nextId = <?= json_encode($next_id ?? null) ?>;
-                if (nextId) {
-                    const nextItem = document.querySelector(`[data-lesson-id='${nextId}']`);
-                    if (nextItem) {
-                        nextItem.classList.remove('disabled','locked');
-                        nextItem.href = 'watch_lesson.php?id=' + nextId;
-                    }
-                }
-
-                // Update progress bar
-                if (data.completed_lessons !== undefined && data.total_lessons !== undefined) {
-                    const percent = data.total_lessons ? Math.round((data.completed_lessons / data.total_lessons) * 100) : 0;
-                    const bar = document.querySelector('.progress .progress-bar');
-                    if (bar) bar.style.width = percent + '%';
-                }
-
-                if (data.course_completed) {
-                    alert('🎉 Congrats — you completed all lessons for this course!');
-                    location.reload();
-                }
-            } catch (e) { console.warn(e); }
-
-        } catch(err) {
-            console.error(err);
-            alert('Failed to mark lesson complete.');
-        }
-    }
-
-    // Text-only / regular button
-    const textBtn = document.getElementById('textMarkComplete');
-    if(textBtn){
-        textBtn.addEventListener('click', markCompleted);
-    }
-
-    // Video auto-complete
-    const video = document.querySelector('video');
-    if(video){
-        video.addEventListener('ended', markCompleted, {once:true});
-    }
-
-    // YouTube button (if exists)
-    <?php if ($ytID): ?>
-    const c = document.createElement('div');
-    c.style.marginTop = '12px';
-    c.innerHTML = '<button id="markCompleteBtn" class="btn btn-success btn-sm">Mark Lesson Complete</button>';
-    const player = document.querySelector('.ratio');
-    if(player) player.parentNode.insertBefore(c, player.nextSibling);
-
-    const ytBtn = document.getElementById('markCompleteBtn');
-    if(ytBtn){
-        ytBtn.addEventListener('click', markCompleted);
-    }
-    <?php endif; ?>
-
-    // Scroll auto-complete for text-only lessons
-    if(!video && !<?= json_encode($ytID) ?>){
-        let done = false;
-        window.addEventListener('scroll', function(){
-            const scrollTop = document.documentElement.scrollTop;
-            const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
-            const progress = scrollTop / scrollHeight;
-
-            if(!done && progress > 0.7){
-                done = true;
-                markCompleted();
-            }
-        });
-    }
-
-})();
-</script>
-
-
-<?php include __DIR__.'/inc/script.php'; ?>
+<?php include __DIR__.'/inc/watch_lesson_script.php'; ?>

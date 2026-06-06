@@ -4,9 +4,8 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// detect current directory depth and adjust base URL for assets
-$basePath = (strpos($_SERVER['REQUEST_URI'], '/admin/') !== false
-    || strpos($_SERVER['REQUEST_URI'], '/payment/') !== false) ? '../' : './';
+// Admin pages serve assets from the admin directory itself.
+$basePath = './';
 
 // allow a page to set $pageTitle before including header
 $pageTitle = $pageTitle ?? 'Dashboard - LMS';
@@ -19,7 +18,7 @@ $pageTitle = $pageTitle ?? 'Dashboard - LMS';
     <meta content="width=device-width, initial-scale=1.0" name="viewport">
 
     <!-- Favicon -->
-    <link href="img/favicon.png" rel="icon">
+    <link href="<?= $basePath ?>img/favicon.png" rel="icon">
 
     <!-- Google Web Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -31,11 +30,11 @@ $pageTitle = $pageTitle ?? 'Dashboard - LMS';
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.4.1/font/bootstrap-icons.css" rel="stylesheet">
 
     <!-- Libraries Stylesheet -->
-    <link href="lib/owlcarousel/assets/owl.carousel.min.css" rel="stylesheet">
-    <link href="lib/tempusdominus/css/tempusdominus-bootstrap-4.min.css" rel="stylesheet" />
+    <link href="<?= $basePath ?>lib/owlcarousel/assets/owl.carousel.min.css" rel="stylesheet">
+    <link href="<?= $basePath ?>lib/tempusdominus/css/tempusdominus-bootstrap-4.min.css" rel="stylesheet" />
 
     <!-- Customized Bootstrap Stylesheet -->
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="<?= $basePath ?>css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/simple-datatables@latest/dist/style.css">
 <!-- Quill stylesheet -->
 <!-- Quill Editor -->
@@ -47,7 +46,7 @@ $pageTitle = $pageTitle ?? 'Dashboard - LMS';
 
 
     <!-- Template Stylesheet -->
-    <link href="css/style.css" rel="stylesheet">
+    <link href="<?= $basePath ?>css/style.css" rel="stylesheet">
 </head>
 <body>
 <div class="container-xxl position-relative bg-white d-flex p-0">

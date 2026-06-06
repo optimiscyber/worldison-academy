@@ -71,6 +71,44 @@ class CourseRepository extends BaseRepository {
     }
 
     /**
+     * Get all courses, optionally filtered by instructor.
+     */
+    public function getAllCourses($instructor_id = null) {
+        if ($instructor_id !== null) {
+            return $this->fetchAll(
+                "SELECT c.*, u.name AS instructor_name, u.profile_picture, cat.name AS category_name
+                 FROM courses c
+                 JOIN users u ON c.instructor_id = u.id
+                 LEFT JOIN categories cat ON c.category_id = cat.id
+                 WHERE c.instructor_id = ?
+                 ORDER BY c.id DESC",
+                [$instructor_id]
+            );
+        }
+
+        return $this->fetchAll(
+            "SELECT c.*, u.name AS instructor_name, u.profile_picture, cat.name AS category_name
+             FROM courses c
+             JOIN users u ON c.instructor_id = u.id
+             LEFT JOIN categories cat ON c.category_id = cat.id
+             ORDER BY c.id DESC"
+        );
+    }
+
+    /**
+     * Get course by ID without published status filtering.
+     */
+    public function getCourseByIdForAdmin($course_id) {
+        return $this->fetchOne(
+            "SELECT c.*, u.name AS instructor_name, u.profile_picture, u.bio
+             FROM courses c
+             JOIN users u ON c.instructor_id = u.id
+             WHERE c.id = ? LIMIT 1",
+            [$course_id]
+        );
+    }
+
+    /**
      * Get course type (paid/free).
      */
     public function getCourseType($course_id) {

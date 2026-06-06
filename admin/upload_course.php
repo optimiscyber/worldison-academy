@@ -2,6 +2,11 @@
 // admin/upload_course.php
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
+ini_set('upload_max_filesize', '200M');
+ini_set('post_max_size', '210M');
+ini_set('memory_limit', '512M');
+ini_set('max_execution_time', '300');
+ini_set('max_input_time', '300');
 session_start();
 require_once __DIR__ . '/inc/db.php';
 require_once __DIR__ . '/../inc/csrf.php';
@@ -20,8 +25,12 @@ $errors = [];
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-  // verify CSRF token
-  csrf_verify();
+    if (!empty($_SERVER['CONTENT_LENGTH']) && $_SERVER['CONTENT_LENGTH'] > 210 * 1024 * 1024) {
+        $errors[] = 'Upload request too large. Maximum allowed size is 200MB.';
+    }
+
+    // verify CSRF token
+    csrf_verify();
 
     // Main course data
     $title = trim($_POST['title'] ?? '');
@@ -50,6 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $dest = $thumbDir . $safeName;
                 if (move_uploaded_file($img['tmp_name'], $dest)) {
                     $thumbnail = '../assets/uploads/thumbnails/' . $safeName;
+                    $createdFiles[] = $dest;
                 } else {
                     $errors[] = 'Failed to move thumbnail file.';
                 }
@@ -62,19 +72,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (empty($errors)) {
+        $createdFiles = [];
+        $pdo->beginTransaction();
 
-        // Price approval logic
-        $price_status = ($type === 'paid' && $_SESSION['role'] === 'instructor') ? 'pending' : 'approved';
+        try {
+            // Price approval logic
+            $price_status = ($type === 'paid' && $_SESSION['role'] === 'instructor') ? 'pending' : 'approved';
 
-        // Insert course
-        $stmt = $pdo->prepare("
-            INSERT INTO courses (instructor_id, category_id, title, description, type, price, price_status, thumbnail, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', NOW())
-        ");
-        $stmt->execute([$instructor_id, $category_id, $title, $description, $type, $price, $price_status, $thumbnail]);
-        $course_id = $pdo->lastInsertId();
+            // Insert course
+            $stmt = $pdo->prepare("
+                INSERT INTO courses (instructor_id, category_id, title, description, type, price, price_status, thumbnail, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', NOW())
+            ");
+            $stmt->execute([$instructor_id, $category_id, $title, $description, $type, $price, $price_status, $thumbnail]);
+            $course_id = $pdo->lastInsertId();
 
-        // Outlines + Lessons
+            // Outlines + Lessons
         if (isset($_POST['outlines']) && is_array($_POST['outlines'])) {
 
             foreach ($_POST['outlines'] as $o_index => $outline) {
@@ -137,6 +150,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                               $dest = $mediaDir . $safe;
                               if (move_uploaded_file($videoFile['tmp_name'], $dest)) {
                                 $final_video_url = '../assets/uploads/media/' . $safe;
+                                $createdFiles[] = $dest;
                               }
                             }
                           }
@@ -231,6 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $dest = $attDir . $safe;
 
                             if (move_uploaded_file($tmp, $dest)) {
+                                $createdFiles[] = $dest;
 
                                 // Insert into lesson_attachments table
                                 $insAtt = $pdo->prepare("
@@ -253,9 +268,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } // end outlines loop
         }
 
-        // Redirect to edit page
-        header("Location: edit_course.php?id=" . $course_id);
-        exit;
+            // Redirect to edit page
+            $pdo->commit();
+            header("Location: edit_course.php?id=" . $course_id);
+            exit;
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            foreach ($createdFiles as $filePath) {
+                if (file_exists($filePath)) {
+                    @unlink($filePath);
+                }
+            }
+            $errors[] = 'Unable to save course. Please try again.';
+            error_log('Course upload failed: ' . $e->getMessage());
+        }
     }
 }
 
