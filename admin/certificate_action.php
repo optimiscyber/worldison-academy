@@ -25,13 +25,7 @@ if (!$id || !in_array($action, $allowed_actions)) {
     die("Invalid request.");
 }
 
-$id = intval($_GET['id'] ?? 0);
-$action = strtolower($_GET['action'] ?? '');
-$allowed_actions = ['approve', 'reject'];
 
-if (!$id || !in_array($action, $allowed_actions)) {
-    die("Invalid request.");
-}
 
 // fetch request
 $stmt = $pdo->prepare("SELECT * FROM certificate_requests WHERE id = ?");
@@ -60,32 +54,94 @@ if ($action === 'reject') {
    -------------------------- */
 require_once __DIR__ . '/../vendor/autoload.php'; // mPDF
 
-function certificateRuntimeDiagnostics(): array {
-    return [
-        'php_version' => PHP_VERSION,
-        'mbstring' => extension_loaded('mbstring'),
-        'gd' => extension_loaded('gd'),
-        'xml' => extension_loaded('xml') || extension_loaded('libxml'),
-        'zlib' => extension_loaded('zlib'),
-        'dom' => extension_loaded('dom'),
-        'vendor_autoload' => file_exists(__DIR__ . '/../vendor/autoload.php'),
-        'mpdf_class' => class_exists('\Mpdf\Mpdf'),
-    ];
+function createCertificateMpdf(): \Mpdf\Mpdf {
+    $tempDir = __DIR__ . '/tmp';
+    if (!is_dir($tempDir)) {
+        mkdir($tempDir, 0755, true);
+    }
+
+    $mpdf = new \Mpdf\Mpdf([
+        'tempDir' => $tempDir,
+        'format' => 'A4-L',
+        'margin_left' => 0,
+        'margin_right' => 0,
+        'margin_top' => 0,
+        'margin_bottom' => 0,
+    ]);
+    $mpdf->showImageErrors = true;
+    $mpdf->SetCompression(false);
+
+    return $mpdf;
 }
 
-$certificateDiagnostics = certificateRuntimeDiagnostics();
-error_log('Certificate generation diagnostics: ' . json_encode($certificateDiagnostics));
+function writeCertificateHtmlDebug(string $html, string $path): void {
+    if (@file_put_contents($path, $html) === false) {
+        error_log('Certificate debug HTML could not be written: ' . $path);
+    }
+}
 
-$missingExtensions = [];
-if (!$certificateDiagnostics['mbstring']) { $missingExtensions[] = 'mbstring'; }
-if (!$certificateDiagnostics['gd']) { $missingExtensions[] = 'gd'; }
-if (!$certificateDiagnostics['xml']) { $missingExtensions[] = 'xml'; }
-if (!$certificateDiagnostics['zlib']) { $missingExtensions[] = 'zlib'; }
+function certificateDataUrl(string $path): string {
+    $mime = function_exists('mime_content_type') ? mime_content_type($path) : 'image/png';
+    return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($path));
+}
 
-if (!empty($missingExtensions)) {
-    error_log('Certificate generation blocked: missing PHP extensions ' . implode(', ', $missingExtensions));
-    ob_end_clean();
-    die('Certificate PDF generation is unavailable because the server is missing required PHP extensions: ' . implode(', ', $missingExtensions) . '. Install them and reload the page.');
+function buildCertificateTableHtml(array $user, array $course, string $issueDate, string $certCode): string {
+    $name = htmlspecialchars($user['name'] ?? '', ENT_QUOTES, 'UTF-8');
+    $title = htmlspecialchars($course['title'] ?? '', ENT_QUOTES, 'UTF-8');
+    $date = htmlspecialchars($issueDate, ENT_QUOTES, 'UTF-8');
+    $code = htmlspecialchars($certCode, ENT_QUOTES, 'UTF-8');
+    $verifyUrl = 'https://academy.worldison.org/verify.php?code=' . rawurlencode($certCode);
+    $verify = htmlspecialchars($verifyUrl, ENT_QUOTES, 'UTF-8');
+
+    return <<<HTML
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: DejaVu Sans, sans-serif;
+      color: #ffffff;
+    }
+    table.certificate {
+      width: 100%;
+      height: 210mm;
+      border-collapse: collapse;
+    }
+    td {
+      text-align: center;
+      vertical-align: middle;
+    }
+    .top-space { height: 56mm; }
+    .title { font-size: 42px; font-weight: bold; height: 18mm; }
+    .name { font-size: 38px; font-weight: bold; height: 24mm; }
+    .copy { font-size: 20px; height: 13mm; }
+    .course { font-size: 24px; font-weight: bold; height: 20mm; }
+    .verify-label { font-size: 18px; height: 8mm; }
+    .verify { font-size: 16px; height: 12mm; }
+    .code { font-size: 16px; height: 14mm; }
+    .date { font-size: 18px; height: 20mm; }
+    .bottom-space { height: 25mm; }
+  </style>
+</head>
+<body>
+  <table class="certificate" cellpadding="0" cellspacing="0">
+    <tr><td class="top-space">&nbsp;</td></tr>
+    <tr><td class="title">Certificate of Completion</td></tr>
+    <tr><td class="name">{$name}</td></tr>
+    <tr><td class="copy">has successfully completed the course</td></tr>
+    <tr><td class="course">{$title}</td></tr>
+    <tr><td class="verify-label">Verify at</td></tr>
+    <tr><td class="verify">{$verify}</td></tr>
+    <tr><td class="code">Certificate Code: <strong>{$code}</strong></td></tr>
+    <tr><td class="date">{$date}</td></tr>
+    <tr><td class="bottom-space">&nbsp;</td></tr>
+  </table>
+</body>
+</html>
+HTML;
 }
 
 // fetch user and course info
@@ -98,10 +154,16 @@ $c->execute([$request['course_id']]);
 $course = $c->fetch(PDO::FETCH_ASSOC);
 
 // ensure directories exist
+$tempDir = __DIR__ . '/tmp';
+if (!is_dir($tempDir)) {
+    mkdir($tempDir, 0755, true);
+}
 $uploadDir = __DIR__ . '/uploads/certificates';
 if (!is_dir($uploadDir)) {
     mkdir($uploadDir, 0755, true);
 }
+$debugDir = $uploadDir . '/debug';
+if (!is_dir($debugDir)) { mkdir($debugDir, 0755, true); }
 
 // Generate a unique cert code and ensure uniqueness
 do {
@@ -118,124 +180,24 @@ $public_url = '/admin/uploads/certificates/' . $filename; // adjust if your base
 
 // Build styled HTML certificate (simple, responsive)
 $issueDate = date('F j, Y');
-// Path to your background image
-
-$issueDate = date('F j, Y');
-
-$bgPath = realpath(__DIR__ . '/img/certificate_bg.png');
-$backgroundMarkup = '';
-if ($bgPath !== false && is_file($bgPath)) {
-    $bgData = @file_get_contents($bgPath);
-    if ($bgData !== false) {
-        $bgMime = function_exists('mime_content_type') ? mime_content_type($bgPath) : 'image/png';
-        $bgDataUrl = 'data:' . $bgMime . ';base64,' . base64_encode($bgData);
-        $backgroundMarkup = '<div style="position:absolute; top:0; left:0; width:297mm; height:210mm; margin:0; padding:0; z-index:0; overflow:hidden;"><img src="' . htmlspecialchars($bgDataUrl, ENT_QUOTES) . '" style="display:block; width:297mm; height:210mm; margin:0; padding:0; opacity:0.95;" /></div>';
-    }
-}
-
-if ($backgroundMarkup === '') {
-    $backgroundMarkup = '<div style="position:absolute; top:0; left:0; width:297mm; height:210mm; margin:0; padding:0; background: linear-gradient(135deg, #0f4c81 0%, #1e88e5 100%); z-index:0;"></div>';
-}
-
-$html = <<<HTML
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <style>
-body {
-  margin: 0;
-  padding: 0;
-  font-family: DejaVu Sans, sans-serif;
-  text-align: center;
-}
-
-h1 { font-size: 40px; margin: 4px 0; }
-h2 { font-size: 20px; margin: 5px 0; }
-.name { font-size: 35px; margin: 8px 0; font-weight: bold; }
-.footer { margin-top: 10px; font-size: 20px; }
-.code { margin-top: 10px; padding: 6px 12px; }
-body, h1, h2, .name, .footer, .code {
-  color: #ffffff;
-}
-
-</style>
-</head>
-<body style="margin:0; padding:0; position:relative;">
-
-$backgroundMarkup
-
-<div style="
-  position:absolute;
-  top:36mm;
-  left:110px;
-  width:100%;
-  text-align:left;
-  z-index:2;
-">
-
-  <h1>of Completion</h1>
-</div>
-
-<div style="position:fixed; top:80mm; width:100%; text-align:center;">
-  <div class="name">{$user['name']}</div>
-</div>
-
-<div style="position:fixed; top:100mm; width:100%; text-align:center;">
-  <h2>on successfully completed the course</h2>
-</div>
-
-<div style="position:fixed; top:110mm; width:100%; text-align:center;">
-  <h2>"{$course['title']}"</h2>
-</div>
-
-<div style="position:fixed; top:173mm; width:100%; left: 145px;; text-align:center;">
-  <div class="footer">{$issueDate}</div>
-</div>
-
-<div style="position:fixed; top:145mm; width:100%; text-align:center;">
-  <div class="code">Certificate Code: <strong>{$cert_code}</strong></div>
-</div>
-<div style="position:fixed; top:125mm; width:100%; text-align:center;">
-  <h2>Verify at:</h2>
-</div>
-<div style="position:fixed; top:130mm; width:100%; left:40; text-align:center;">
-  <div class="footer">
-    https://academy.worldison.org/verify.php?code={$cert_code}
-  </div>
-</div>
-
-
-</body>
-
-
-</html>
-HTML;
+$bgPath = __DIR__ . '/img/certificate_bg.png';
+$html = buildCertificateTableHtml($user, $course, $issueDate, $cert_code);
+writeCertificateHtmlDebug($html, $debugDir . '/certificate_final_table_watermark.html');
 
 
 // generate PDF
 try {
-  $mpdf = new \Mpdf\Mpdf([
-    'tempDir' => __DIR__ . '/tmp',
-    'format' => 'A4-L',
-    'margin_left' => 0,
-    'margin_right' => 0,
-    'margin_top' => 0,
-    'margin_bottom' => 0,
-]);
-
-$mpdf->showImageErrors = true;
-
+    $mpdf = createCertificateMpdf();
+    $mpdf->SetWatermarkImage($bgPath);
+    $mpdf->showWatermarkImage = true;
     $mpdf->WriteHTML($html);
     $mpdf->Output($filepath, \Mpdf\Output\Destination::FILE);
 } catch (\Mpdf\MpdfException $e) {
     error_log('mPDF error: ' . $e->getMessage());
-    error_log('Certificate generation diagnostics: ' . json_encode($certificateDiagnostics));
     ob_end_clean();
     die('Failed to generate certificate PDF. Please check the PHP extensions and server configuration. Details: ' . $e->getMessage());
 } catch (Throwable $e) {
     error_log('Certificate generation unexpected error: ' . $e->getMessage());
-    error_log('Certificate generation diagnostics: ' . json_encode($certificateDiagnostics));
     ob_end_clean();
     die('Failed to generate certificate PDF due to an unexpected server error. Please check the PHP extensions and server configuration.');
 }
