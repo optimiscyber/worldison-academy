@@ -55,7 +55,8 @@ include __DIR__ . '/inc/navbar.php';
                         <a href="certificate_action.php?id=<?= $r['id'] ?>&action=approve" class="btn btn-success btn-sm">Approve</a>
                         <a href="certificate_action.php?id=<?= $r['id'] ?>&action=reject" class="btn btn-danger btn-sm">Reject</a>
                     <?php elseif($r['status'] === 'approved' && !empty($r['certificate_url'])): ?>
-                        <a href="download_certificate.php?id=<?= $r['id'] ?>" class="btn btn-primary btn-sm">Preview</a>
+                        <a href="download_certificate.php?id=<?= $r['id'] ?>&inline=1" class="btn btn-primary btn-sm" target="_blank" rel="noopener">Preview</a>
+                        <a href="download_certificate.php?id=<?= $r['id'] ?>" class="btn btn-outline-secondary btn-sm">Download</a>
                     <?php else: ?>
                         <em>No action</em>
                     <?php endif; ?>

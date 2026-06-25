@@ -203,8 +203,12 @@ $hasVideo = !empty($video);
 $hasText = !empty($lesson['content']);
 
 // Certificate progress
-$total_lessons = $lesson['course_progress']['total'] ?? 0;
-$completed_lessons = $lesson['course_progress']['completed'] ?? 0;
+if (!isset($total_lessons)) {
+    $total_lessons = $lesson['course_progress']['total'] ?? 0;
+}
+if (!isset($completed_lessons)) {
+    $completed_lessons = $lesson['course_progress']['completed'] ?? 0;
+}
 
 $all_completed = ($completed_lessons >= $total_lessons);
 

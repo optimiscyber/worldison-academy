@@ -2,8 +2,17 @@
 (function(){
     const lessonId = <?= json_encode($lesson_id) ?>;
     const markUrl = '/api/progress.php';
+    const completionNoticeKey = 'lesson-complete-alerted-' + lessonId;
+    let isSubmitting = false;
+    let completionHandled = sessionStorage.getItem(completionNoticeKey) === '1';
 
     async function markCompleted() {
+        if (isSubmitting || completionHandled) {
+            return;
+        }
+
+        isSubmitting = true;
+
         try {
             const response = await fetch(markUrl, {
                 method: 'POST',
@@ -56,6 +65,8 @@
                 }
 
                 if (data.course_completed) {
+                    completionHandled = true;
+                    sessionStorage.setItem(completionNoticeKey, '1');
                     alert('🎉 Congrats — you completed all lessons for this course!');
                     location.reload();
                 }
@@ -64,6 +75,10 @@
         } catch(err) {
             console.error(err);
             alert('Failed to mark lesson complete: ' + (err.message || 'Unknown error'));
+        } finally {
+            if (!completionHandled) {
+                isSubmitting = false;
+            }
         }
     }
 

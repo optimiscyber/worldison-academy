@@ -60,6 +60,34 @@ if ($action === 'reject') {
    -------------------------- */
 require_once __DIR__ . '/../vendor/autoload.php'; // mPDF
 
+function certificateRuntimeDiagnostics(): array {
+    return [
+        'php_version' => PHP_VERSION,
+        'mbstring' => extension_loaded('mbstring'),
+        'gd' => extension_loaded('gd'),
+        'xml' => extension_loaded('xml') || extension_loaded('libxml'),
+        'zlib' => extension_loaded('zlib'),
+        'dom' => extension_loaded('dom'),
+        'vendor_autoload' => file_exists(__DIR__ . '/../vendor/autoload.php'),
+        'mpdf_class' => class_exists('\Mpdf\Mpdf'),
+    ];
+}
+
+$certificateDiagnostics = certificateRuntimeDiagnostics();
+error_log('Certificate generation diagnostics: ' . json_encode($certificateDiagnostics));
+
+$missingExtensions = [];
+if (!$certificateDiagnostics['mbstring']) { $missingExtensions[] = 'mbstring'; }
+if (!$certificateDiagnostics['gd']) { $missingExtensions[] = 'gd'; }
+if (!$certificateDiagnostics['xml']) { $missingExtensions[] = 'xml'; }
+if (!$certificateDiagnostics['zlib']) { $missingExtensions[] = 'zlib'; }
+
+if (!empty($missingExtensions)) {
+    error_log('Certificate generation blocked: missing PHP extensions ' . implode(', ', $missingExtensions));
+    ob_end_clean();
+    die('Certificate PDF generation is unavailable because the server is missing required PHP extensions: ' . implode(', ', $missingExtensions) . '. Install them and reload the page.');
+}
+
 // fetch user and course info
 $u = $pdo->prepare("SELECT id, name, email FROM users WHERE id = ?");
 $u->execute([$request['user_id']]);
@@ -92,15 +120,22 @@ $public_url = '/admin/uploads/certificates/' . $filename; // adjust if your base
 $issueDate = date('F j, Y');
 // Path to your background image
 
+$issueDate = date('F j, Y');
+
 $bgPath = realpath(__DIR__ . '/img/certificate_bg.png');
-if ($bgPath === false) {
-    ob_end_clean();
-    die('Background image not found');
+$backgroundMarkup = '';
+if ($bgPath !== false && is_file($bgPath)) {
+    $bgData = @file_get_contents($bgPath);
+    if ($bgData !== false) {
+        $bgMime = function_exists('mime_content_type') ? mime_content_type($bgPath) : 'image/png';
+        $bgDataUrl = 'data:' . $bgMime . ';base64,' . base64_encode($bgData);
+        $backgroundMarkup = '<div style="position:absolute; top:0; left:0; width:297mm; height:210mm; margin:0; padding:0; z-index:0; overflow:hidden;"><img src="' . htmlspecialchars($bgDataUrl, ENT_QUOTES) . '" style="display:block; width:297mm; height:210mm; margin:0; padding:0; opacity:0.95;" /></div>';
+    }
 }
 
-$bg = 'file://' . $bgPath;
-
-$issueDate = date('F j, Y');
+if ($backgroundMarkup === '') {
+    $backgroundMarkup = '<div style="position:absolute; top:0; left:0; width:297mm; height:210mm; margin:0; padding:0; background: linear-gradient(135deg, #0f4c81 0%, #1e88e5 100%); z-index:0;"></div>';
+}
 
 $html = <<<HTML
 <!doctype html>
@@ -126,22 +161,17 @@ body, h1, h2, .name, .footer, .code {
 
 </style>
 </head>
-<body>
+<body style="margin:0; padding:0; position:relative;">
 
-<img src="$bg" style="
-  position:fixed;
-  top:0; left:0;
-  width:297mm;
-  height:210mm;
-  z-index:-1;
-">
+$backgroundMarkup
 
 <div style="
-  position:fixed;
+  position:absolute;
   top:36mm;
   left:110px;
   width:100%;
   text-align:left;
+  z-index:2;
 ">
 
   <h1>of Completion</h1>
@@ -199,8 +229,15 @@ $mpdf->showImageErrors = true;
     $mpdf->WriteHTML($html);
     $mpdf->Output($filepath, \Mpdf\Output\Destination::FILE);
 } catch (\Mpdf\MpdfException $e) {
-    error_log("mPDF error: " . $e->getMessage());
-    die("Failed to generate certificate PDF: " . $e->getMessage());
+    error_log('mPDF error: ' . $e->getMessage());
+    error_log('Certificate generation diagnostics: ' . json_encode($certificateDiagnostics));
+    ob_end_clean();
+    die('Failed to generate certificate PDF. Please check the PHP extensions and server configuration. Details: ' . $e->getMessage());
+} catch (Throwable $e) {
+    error_log('Certificate generation unexpected error: ' . $e->getMessage());
+    error_log('Certificate generation diagnostics: ' . json_encode($certificateDiagnostics));
+    ob_end_clean();
+    die('Failed to generate certificate PDF due to an unexpected server error. Please check the PHP extensions and server configuration.');
 }
 
 // Insert verification record

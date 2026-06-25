@@ -7,6 +7,7 @@ ini_set('post_max_size', '210M');
 ini_set('memory_limit', '512M');
 ini_set('max_execution_time', '300');
 ini_set('max_input_time', '300');
+ini_set('default_charset', 'UTF-8');
 session_start();
 require_once __DIR__ . '/inc/db.php';
 require_once __DIR__ . '/../inc/csrf.php';
@@ -29,6 +30,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'Upload request too large. Maximum allowed size is 200MB.';
     }
 
+    if (!empty($_POST['draft'])) {
+        $success = 'Draft saved locally in your browser. You can continue editing later.';
+    }
+
     // verify CSRF token
     csrf_verify();
 
@@ -38,6 +43,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $type = $_POST['type'] ?? 'free';
     $price = ($type === 'paid') ? floatval($_POST['price'] ?? 0) : 0.00;
     $description = trim($_POST['description'] ?? '');
+    $contentLength = mb_strlen(strip_tags($description), 'UTF-8');
+    if ($contentLength > 20000) {
+        $errors[] = 'Course description is too long. Please keep it under 20,000 characters.';
+    }
 
     if ($title === '') $errors[] = "Course title is required";
 
@@ -115,9 +124,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                         $l_description = trim($lesson['description'] ?? '');
                         $l_content     = trim($lesson['content'] ?? '');
+                        $l_content_len = mb_strlen(strip_tags($l_content), 'UTF-8');
+                        if ($l_content_len > 200000) {
+                            throw new Exception('Lesson content too large for one lesson.');
+                        }
                         $youtube_url   = trim($lesson['video_url'] ?? '');
                         $lesson_type   = in_array($lesson['lesson_type'] ?? '', ['text','video','mixed']) ? $lesson['lesson_type'] : 'mixed';
                         $order_no      = intval($lesson['order_no'] ?? $l_index);
+                        $reading_time  = max(1, (int) ceil($l_content_len / 1200));
 
                         /*
                          ---------------------------------------------------
@@ -179,10 +193,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             duration,
                             lesson_type,
                             order_no,
+                            reading_time,
+                            content_format,
                             status,
                             created_at
                         ) VALUES (
-                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', NOW()
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'html', 'published', NOW()
                         )
                     ");
                     
@@ -194,9 +210,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $l_content,
                         $final_video_url,
                         $l_description,
-                        null,               // duration still null
+                        null,
                         $lesson_type,
-                        $order_no
+                        $order_no,
+                        $reading_time
                     ]);
                     
                     $lesson_id = $pdo->lastInsertId();
@@ -308,6 +325,7 @@ include __DIR__ . '/inc/navbar.php';
 
     <form method="POST" enctype="multipart/form-data" id="courseForm">
       <?php echo csrf_input(); ?>
+      <input type="hidden" name="draft" id="draftFlag" value="0">
       <div class="card mb-3 p-3">
         <div class="row g-3">
           <div class="col-md-6">
@@ -353,8 +371,9 @@ include __DIR__ . '/inc/navbar.php';
         <button type="button" class="btn btn-secondary" onclick="addOutline()">+ Add Module / Outline</button>
       </div>
 
-      <div>
+      <div class="d-flex flex-wrap gap-2">
         <button type="submit" class="btn btn-primary">Create Course</button>
+        <button type="button" class="btn btn-outline-secondary" onclick="saveDraft()">Save Draft</button>
       </div>
     </form>
   </div>
@@ -377,7 +396,7 @@ const quillToolbarOptions = [
   [{ list: 'ordered' }, { list: 'bullet' }],
   [{ indent: '-1' }, { indent: '+1' }],
   ['blockquote','code-block'],
-  ['link','image'],
+  ['link','image','video'],
   ['clean']
 ];
 
@@ -426,6 +445,16 @@ function syncQuillContent() {
             textarea.value = quill.root.innerHTML;
         }
     });
+}
+
+function saveDraft() {
+    syncQuillContent();
+    const form = document.getElementById('courseForm');
+    document.getElementById('draftFlag').value = '1';
+    const payload = new FormData(form);
+    const blob = new Blob([JSON.stringify(Object.fromEntries(payload.entries()))], { type: 'application/json' });
+    localStorage.setItem('worldison_course_draft', URL.createObjectURL(blob));
+    alert('Draft saved locally in your browser.');
 }
 
 function togglePrice(){
@@ -537,6 +566,16 @@ window.addEventListener('DOMContentLoaded', () => {
     const courseForm = document.getElementById('courseForm');
     if (courseForm) {
         courseForm.addEventListener('submit', syncQuillContent);
+    }
+    const stored = localStorage.getItem('worldison_course_draft');
+    if (stored) {
+        const msg = confirm('A draft was found. Restore it?');
+        if (msg) {
+            const draft = JSON.parse(localStorage.getItem('worldison_course_draft_data') || '{}');
+            if (draft.title) document.querySelector('input[name="title"]').value = draft.title;
+            if (draft.description) document.getElementById('courseDescription').value = draft.description;
+            if (courseDescriptionEditor) courseDescriptionEditor.root.innerHTML = draft.description || '';
+        }
     }
 });
 

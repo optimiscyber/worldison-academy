@@ -31,6 +31,9 @@ $tests = $testsStmt->fetchAll(PDO::FETCH_ASSOC);
 
 $errors = [];
 $success = '';
+$maxContentChars = 200000;
+$maxDescriptionChars = 4000;
+$maxUploadBytes = 10 * 1024 * 1024;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $title = trim($_POST['title'] ?? '');
@@ -38,8 +41,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $content = trim($_POST['content'] ?? '');
     $lesson_type = $_POST['lesson_type'] ?? 'mixed';
     $video_url = trim($_POST['video_url'] ?? null);
+    $seo_title = trim($_POST['seo_title'] ?? '');
+    $meta_description = trim($_POST['meta_description'] ?? '');
 
     if ($title === '') $errors[] = "Lesson title is required";
+    if (mb_strlen($description, 'UTF-8') > $maxDescriptionChars) $errors[] = 'Lesson description is too long.';
+    if (mb_strlen($content, 'UTF-8') > $maxContentChars) $errors[] = 'Lesson content is too large.';
 
     // Handle video upload
     if (!empty($_FILES['video_file']['name'])) {
@@ -56,14 +63,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (empty($errors)) {
-        // Update lesson
         $slug = strtolower(preg_replace('/[^a-z0-9]+/', '-', $title));
+        $word_count = preg_match_all('/\p{L}+/u', strip_tags($content), $matches);
+        $reading_time = max(1, (int) ceil(($word_count ?: 0) / 180));
         $upd = $pdo->prepare("
             UPDATE lessons 
-            SET title=?, slug=?, description=?, content=?, video_url=?, lesson_type=?, updated_at=NOW() 
+            SET title=?, slug=?, seo_title=?, meta_description=?, description=?, content=?, content_format='html', reading_time=?, video_url=?, lesson_type=?, updated_at=NOW() 
             WHERE id=?
         ");
-        $upd->execute([$title, $slug, $description, $content, $video_url, $lesson_type, $lesson_id]);
+        $upd->execute([$title, $slug, $seo_title, $meta_description, $description, $content, $reading_time, $video_url, $lesson_type, $lesson_id]);
 
         // Handle attachments
         if (!empty($_FILES['attachments']['name'][0])) {
@@ -118,21 +126,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <form id="lessonForm" method="POST" enctype="multipart/form-data">
     <div class="mb-3">
         <label>Lesson Title</label>
-        <input name="title" class="form-control" value="<?= htmlspecialchars($lesson['title']) ?>" required>
+        <input name="title" id="lessonTitle" class="form-control" value="<?= htmlspecialchars($lesson['title']) ?>" required>
+        <div class="form-text">Drafts autosave locally while you edit.</div>
     </div>
 
-    <!-- Quill Description -->
+    <div class="row g-3">
+        <div class="col-md-6 mb-3">
+            <label>SEO Title</label>
+            <input name="seo_title" class="form-control" value="<?= htmlspecialchars($lesson['seo_title'] ?? '') ?>" maxlength="255">
+        </div>
+        <div class="col-md-6 mb-3">
+            <label>Meta Description</label>
+            <input name="meta_description" class="form-control" value="<?= htmlspecialchars($lesson['meta_description'] ?? '') ?>" maxlength="255">
+        </div>
+    </div>
+
     <div class="mb-3">
         <label>Description</label>
+        <div class="d-flex flex-wrap gap-2 mb-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-action="insert-table" data-editor="description">Insert Table</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-action="insert-callout" data-editor="description">Insert Callout</button>
+        </div>
         <div id="descriptionEditor" style="min-height:100px; background:#fff; border:1px solid #ddd; border-radius:6px;"></div>
         <textarea name="description" id="description" style="display:none;"></textarea>
     </div>
 
-    <!-- Quill Content -->
     <div class="mb-3">
         <label>Content</label>
-        <div id="contentEditor" style="min-height:150px; background:#fff; border:1px solid #ddd; border-radius:6px;"></div>
+        <div class="d-flex flex-wrap gap-2 mb-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-action="insert-table" data-editor="content">Insert Table</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-action="insert-callout" data-editor="content">Insert Callout</button>
+        </div>
+        <div id="contentEditor" style="min-height:180px; background:#fff; border:1px solid #ddd; border-radius:6px;"></div>
         <textarea name="content" id="content" style="display:none;"></textarea>
+        <div class="form-text">Long-form lessons are supported and will display with a cleaner reading experience.</div>
     </div>
 
     <div class="mb-3">
@@ -214,19 +241,75 @@ const fullToolbar = [
     ['clean']
 ];
 
-// Initialize Quill editors
 const descriptionQuill = new Quill('#descriptionEditor', { theme: 'snow', modules:{ toolbar: fullToolbar } });
 const contentQuill = new Quill('#contentEditor', { theme: 'snow', modules:{ toolbar: fullToolbar } });
 
-// Load existing content
 descriptionQuill.root.innerHTML = <?php echo json_encode(htmlspecialchars_decode($lesson['description'] ?? '')); ?>;
 contentQuill.root.innerHTML = <?php echo json_encode(htmlspecialchars_decode($lesson['content'] ?? '')); ?>;
 
-// On form submit, copy Quill content to hidden textareas
+function insertStructuredBlock(quill, type) {
+    const range = quill.getSelection(true) || { index: quill.getLength(), length: 0 };
+    if (type === 'table') {
+        quill.insertEmbed(range.index, 'html', '<table class="table table-bordered mb-3"><tbody><tr><th>Header</th><th>Header</th></tr><tr><td>Cell</td><td>Cell</td></tr></tbody></table>');
+    } else {
+        quill.insertEmbed(range.index, 'html', '<div class="alert alert-info mb-3"><strong>Callout</strong><p>Use this section to highlight key points.</p></div>');
+    }
+    quill.setSelection(range.index + 1, 0);
+}
+
+document.querySelectorAll('[data-action="insert-table"]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+        const quill = btn.dataset.editor === 'content' ? contentQuill : descriptionQuill;
+        insertStructuredBlock(quill, 'table');
+    });
+});
+
+document.querySelectorAll('[data-action="insert-callout"]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+        const quill = btn.dataset.editor === 'content' ? contentQuill : descriptionQuill;
+        insertStructuredBlock(quill, 'callout');
+    });
+});
+
 document.getElementById('lessonForm').addEventListener('submit', () => {
     document.getElementById('description').value = descriptionQuill.root.innerHTML;
     document.getElementById('content').value = contentQuill.root.innerHTML;
+    localStorage.removeItem('lessonEditDraft_<?= $lesson_id ?>');
 });
+
+const draftKey = 'lessonEditDraft_<?= $lesson_id ?>';
+function saveDraft() {
+    const payload = {
+        title: document.getElementById('lessonTitle').value,
+        seo_title: document.querySelector('input[name="seo_title"]').value,
+        meta_description: document.querySelector('input[name="meta_description"]').value,
+        description: descriptionQuill.root.innerHTML,
+        content: contentQuill.root.innerHTML,
+        lesson_type: document.querySelector('select[name="lesson_type"]').value,
+        video_url: document.querySelector('input[name="video_url"]').value
+    };
+    localStorage.setItem(draftKey, JSON.stringify(payload));
+}
+
+function restoreDraft() {
+    try {
+        const saved = localStorage.getItem(draftKey);
+        if (!saved) return;
+        const payload = JSON.parse(saved);
+        if (payload.title) document.getElementById('lessonTitle').value = payload.title;
+        if (payload.seo_title) document.querySelector('input[name="seo_title"]').value = payload.seo_title;
+        if (payload.meta_description) document.querySelector('input[name="meta_description"]').value = payload.meta_description;
+        if (payload.description) descriptionQuill.root.innerHTML = payload.description;
+        if (payload.content) contentQuill.root.innerHTML = payload.content;
+        if (payload.lesson_type) document.querySelector('select[name="lesson_type"]').value = payload.lesson_type;
+        if (payload.video_url) document.querySelector('input[name="video_url"]').value = payload.video_url;
+    } catch (e) {}
+}
+
+['input','change'].forEach((evt) => {
+    document.getElementById('lessonForm').addEventListener(evt, saveDraft);
+});
+document.addEventListener('DOMContentLoaded', restoreDraft);
 
 // Test management
 let testIndex = <?= count($tests) ?>;

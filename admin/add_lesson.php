@@ -25,51 +25,106 @@ $outlines = $outlineStmt->fetchAll(PDO::FETCH_ASSOC);
 
 $errors = [];
 $success = '';
+$maxContentChars = 200000;
+$maxDescriptionChars = 4000;
+$maxUploadBytes = 10 * 1024 * 1024;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-
-    $title = trim($_POST['title']);
+    $title = trim($_POST['title'] ?? '');
     $slug = strtolower(preg_replace('/[^a-z0-9]+/', '-', $title));
-    $description = $_POST['description'] ?? '';
-    $content = $_POST['content'] ?? '';
-    $duration = trim($_POST['duration']);
+    $description = trim($_POST['description'] ?? '');
+    $content = trim($_POST['content'] ?? '');
+    $duration = trim($_POST['duration'] ?? '');
     $status = $_POST['status'] ?? 'draft';
-    $outline_id = !empty($_POST['outline_id']) ? intval($_POST['outline_id']) : NULL;
+    $outline_id = !empty($_POST['outline_id']) ? intval($_POST['outline_id']) : null;
+    $new_outline = trim($_POST['new_outline'] ?? '');
     $lesson_type = $_POST['lesson_type'] ?? 'mixed';
     $media_type = $_POST['media_type'] ?? 'none';
-    $video_url = NULL;
+    $video_url = null;
+    $seo_title = trim($_POST['seo_title'] ?? '');
+    $meta_description = trim($_POST['meta_description'] ?? '');
 
-    // Media handling
+    if ($title === '') {
+        $errors[] = 'Lesson title is required.';
+    }
+
+    if (mb_strlen($title, 'UTF-8') > 150) {
+        $errors[] = 'Lesson title should be 150 characters or fewer.';
+    }
+
+    if (mb_strlen($description, 'UTF-8') > $maxDescriptionChars) {
+        $errors[] = 'Lesson description is too long. Keep it under 4,000 characters.';
+    }
+
+    if (mb_strlen($content, 'UTF-8') > $maxContentChars) {
+        $errors[] = 'Lesson content is too large. Keep it under 200,000 characters.';
+    }
+
+    if ($new_outline !== '' && empty($outline_id)) {
+        $outlineStmt = $pdo->prepare("INSERT INTO course_outline (course_id, title, description, order_no, created_at) VALUES (?, ?, '', ?, NOW())");
+        $outlineStmt->execute([$course_id, $new_outline, 999]);
+        $outline_id = (int) $pdo->lastInsertId();
+    }
+
     if ($lesson_type !== 'text') {
         if ($media_type === 'youtube') {
-            $video_url = trim($_POST['youtube_url']);
+            $video_url = trim($_POST['youtube_url'] ?? '');
         } elseif ($media_type === 'upload' && !empty($_FILES['video_file']['name'])) {
             $target_dir = "../assets/uploads/media/";
             if (!is_dir($target_dir)) mkdir($target_dir, 0777, true);
-            $filename = time() . "-" . basename($_FILES["video_file"]["name"]);
+            $filename = time() . "-" . basename($_FILES['video_file']['name']);
             $video_path = $target_dir . $filename;
-            if (move_uploaded_file($_FILES["video_file"]["tmp_name"], $video_path)) {
+            if (move_uploaded_file($_FILES['video_file']['tmp_name'], $video_path)) {
                 $video_url = $video_path;
             } else {
-                $errors[] = "Video upload failed.";
+                $errors[] = 'Video upload failed.';
             }
         }
     }
 
-    // Determine lesson order
+    $attachmentPaths = [];
+    if (!empty($_FILES['attachments']['name'][0])) {
+        $target_dir = '../assets/uploads/attachments/';
+        if (!is_dir($target_dir)) mkdir($target_dir, 0777, true);
+        foreach ($_FILES['attachments']['name'] as $index => $name) {
+            if (empty($name)) continue;
+            $tmp_name = $_FILES['attachments']['tmp_name'][$index] ?? '';
+            $size = (int) ($_FILES['attachments']['size'][$index] ?? 0);
+            if ($size > $maxUploadBytes) {
+                $errors[] = 'One or more resources exceed the 10MB upload limit.';
+                continue;
+            }
+            $safe = time() . '_' . preg_replace('/[^a-zA-Z0-9\-_\.]/', '', basename($name));
+            $dest = $target_dir . $safe;
+            if (move_uploaded_file($tmp_name, $dest)) {
+                $attachmentPaths[] = ['file_name' => basename($safe), 'file_path' => '../assets/uploads/attachments/' . $safe, 'file_type' => strtolower(pathinfo($safe, PATHINFO_EXTENSION))];
+            } else {
+                $errors[] = 'A resource upload failed.';
+            }
+        }
+    }
+
     $orderStmt = $pdo->prepare("SELECT COALESCE(MAX(order_no), 0) + 1 FROM lessons WHERE course_id = ?");
     $orderStmt->execute([$course_id]);
     $next_order = $orderStmt->fetchColumn();
 
     if (empty($errors)) {
+        $word_count = preg_match_all('/\p{L}+/u', strip_tags($content), $matches);
+        $reading_time = max(1, (int) ceil(($word_count ?: 0) / 180));
         $stmt = $pdo->prepare("INSERT INTO lessons 
-            (course_id, outline_id, title, slug, content, video_url, description, duration, lesson_type, order_no, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (course_id, outline_id, title, slug, seo_title, meta_description, content, content_format, reading_time, video_url, description, duration, lesson_type, order_no, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'html', ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
-            $course_id, $outline_id, $title, $slug, $content, $video_url,
+            $course_id, $outline_id, $title, $slug, $seo_title, $meta_description, $content, $reading_time, $video_url,
             $description, $duration, $lesson_type, $next_order, $status
         ]);
+
+        $lesson_id = (int) $pdo->lastInsertId();
+        foreach ($attachmentPaths as $attachment) {
+            $attachStmt = $pdo->prepare("INSERT INTO lesson_attachments (lesson_id, file_name, file_path, file_type, created_at) VALUES (?, ?, ?, ?, NOW())");
+            $attachStmt->execute([$lesson_id, $attachment['file_name'], $attachment['file_path'], $attachment['file_type']]);
+        }
 
         echo "<script>alert('Lesson added successfully'); window.location='edit_course.php?id={$course_id}';</script>";
         exit;
@@ -94,35 +149,58 @@ include __DIR__ . '/inc/navbar.php';
 
         <form id="lessonForm" method="POST" enctype="multipart/form-data">
 
-            <!-- Title -->
             <div class="mb-3">
                 <label class="form-label">Lesson Title</label>
-                <input type="text" name="title" class="form-control" required>
+                <input type="text" id="lessonTitle" name="title" class="form-control" required>
+                <div class="form-text">Autosave drafts locally while you write. Long-form lessons are supported.</div>
             </div>
 
-            <!-- Outline Module -->
-            <div class="mb-3">
-                <label class="form-label">Module / Outline</label>
-                <select name="outline_id" class="form-select">
-                    <option value="">-- None (General Lesson) --</option>
-                    <?php foreach ($outlines as $o): ?>
-                        <option value="<?= $o['id'] ?>"><?= htmlspecialchars($o['title']) ?></option>
-                    <?php endforeach; ?>
-                </select>
+            <div class="row g-3">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Module / Chapter</label>
+                    <select name="outline_id" class="form-select">
+                        <option value="">-- None (General Lesson) --</option>
+                        <?php foreach ($outlines as $o): ?>
+                            <option value="<?= $o['id'] ?>"><?= htmlspecialchars($o['title']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Create New Module</label>
+                    <input type="text" name="new_outline" class="form-control" placeholder="New chapter or module">
+                </div>
             </div>
 
-            <!-- Quill Description -->
+            <div class="row g-3">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">SEO Title</label>
+                    <input type="text" name="seo_title" class="form-control" maxlength="255" placeholder="Optional SEO title">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Meta Description</label>
+                    <input type="text" name="meta_description" class="form-control" maxlength="255" placeholder="Optional meta description">
+                </div>
+            </div>
+
             <div class="mb-3">
                 <label class="form-label">Short Description</label>
-                <div id="descriptionEditor" style="min-height:100px; background:#fff; border:1px solid #ddd; border-radius:6px;"></div>
+                <div class="d-flex flex-wrap gap-2 mb-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-action="insert-table" data-editor="description">Insert Table</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-action="insert-callout" data-editor="description">Insert Callout</button>
+                </div>
+                <div id="descriptionEditor" style="min-height:120px; background:#fff; border:1px solid #ddd; border-radius:6px;"></div>
                 <textarea name="description" id="description" style="display:none;"></textarea>
             </div>
 
-            <!-- Quill Content -->
             <div class="mb-3">
-                <label class="form-label">Lesson Content (Text)</label>
-                <div id="contentEditor" style="min-height:150px; background:#fff; border:1px solid #ddd; border-radius:6px;"></div>
+                <label class="form-label">Lesson Content (Text, Images, Resources)</label>
+                <div class="d-flex flex-wrap gap-2 mb-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-action="insert-table" data-editor="content">Insert Table</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-action="insert-callout" data-editor="content">Insert Callout</button>
+                </div>
+                <div id="contentEditor" style="min-height:220px; background:#fff; border:1px solid #ddd; border-radius:6px;"></div>
                 <textarea name="content" id="content" style="display:none;"></textarea>
+                <div class="form-text">Maximum 200,000 characters and 10MB per uploaded resource.</div>
             </div>
 
             <div class="row">
@@ -174,6 +252,11 @@ include __DIR__ . '/inc/navbar.php';
                 </div>
             </div>
 
+            <div class="mb-3">
+                <label class="form-label">Downloadable Resources</label>
+                <input type="file" name="attachments[]" class="form-control" multiple accept=".pdf,.doc,.docx,.ppt,.pptx,.zip,.png,.jpg,.jpeg">
+            </div>
+
             <div class="text-end mt-4">
                 <button class="btn btn-primary"><i class="fa fa-save me-2"></i>Add Lesson</button>
                 <a href="edit_course.php?id=<?= $course_id ?>" class="btn btn-secondary">Cancel</a>
@@ -201,17 +284,84 @@ const toolbarOptions = [
   ['clean']
 ];
 
-// Initialize Quill editors
 const descriptionQuill = new Quill('#descriptionEditor', { theme: 'snow', modules:{ toolbar: toolbarOptions } });
 const contentQuill = new Quill('#contentEditor', { theme: 'snow', modules:{ toolbar: toolbarOptions } });
 
-// Copy Quill content to hidden textareas on submit
+function insertStructuredBlock(quill, type) {
+    const range = quill.getSelection(true) || { index: quill.getLength(), length: 0 };
+    if (type === 'table') {
+        quill.insertEmbed(range.index, 'html', '<table class="table table-bordered mb-3"><tbody><tr><th>Header</th><th>Header</th></tr><tr><td>Cell</td><td>Cell</td></tr></tbody></table>');
+    } else {
+        quill.insertEmbed(range.index, 'html', '<div class="alert alert-info mb-3"><strong>Callout</strong><p>Use this section to highlight key points.</p></div>');
+    }
+    quill.setSelection(range.index + 1, 0);
+}
+
+document.querySelectorAll('[data-action="insert-table"]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+        const quill = btn.dataset.editor === 'content' ? contentQuill : descriptionQuill;
+        insertStructuredBlock(quill, 'table');
+    });
+});
+
+document.querySelectorAll('[data-action="insert-callout"]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+        const quill = btn.dataset.editor === 'content' ? contentQuill : descriptionQuill;
+        insertStructuredBlock(quill, 'callout');
+    });
+});
+
 document.getElementById('lessonForm').addEventListener('submit', () => {
     document.getElementById('description').value = descriptionQuill.root.innerHTML;
     document.getElementById('content').value = contentQuill.root.innerHTML;
+    localStorage.removeItem('lessonDraft_<?= $course_id ?>');
 });
 
-// Video section toggle
+const draftKey = 'lessonDraft_<?= $course_id ?>';
+function saveDraft() {
+    const payload = {
+        title: document.getElementById('lessonTitle').value,
+        outline_id: document.querySelector('select[name="outline_id"]').value,
+        new_outline: document.querySelector('input[name="new_outline"]').value,
+        seo_title: document.querySelector('input[name="seo_title"]').value,
+        meta_description: document.querySelector('input[name="meta_description"]').value,
+        description: descriptionQuill.root.innerHTML,
+        content: contentQuill.root.innerHTML,
+        duration: document.querySelector('input[name="duration"]').value,
+        lesson_type: document.querySelector('select[name="lesson_type"]').value,
+        status: document.querySelector('select[name="status"]').value,
+        youtube_url: document.querySelector('input[name="youtube_url"]').value
+    };
+    localStorage.setItem(draftKey, JSON.stringify(payload));
+}
+
+function restoreDraft() {
+    const saved = localStorage.getItem(draftKey);
+    if (!saved) return;
+    try {
+        const payload = JSON.parse(saved);
+        if (payload.title) document.getElementById('lessonTitle').value = payload.title;
+        if (payload.outline_id) document.querySelector('select[name="outline_id"]').value = payload.outline_id;
+        if (payload.new_outline) document.querySelector('input[name="new_outline"]').value = payload.new_outline;
+        if (payload.seo_title) document.querySelector('input[name="seo_title"]').value = payload.seo_title;
+        if (payload.meta_description) document.querySelector('input[name="meta_description"]').value = payload.meta_description;
+        if (payload.description) descriptionQuill.root.innerHTML = payload.description;
+        if (payload.content) contentQuill.root.innerHTML = payload.content;
+        if (payload.duration) document.querySelector('input[name="duration"]').value = payload.duration;
+        if (payload.lesson_type) document.querySelector('select[name="lesson_type"]').value = payload.lesson_type;
+        if (payload.status) document.querySelector('select[name="status"]').value = payload.status;
+        if (payload.youtube_url) document.querySelector('input[name="youtube_url"]').value = payload.youtube_url;
+        toggleLessonType();
+        toggleMedia();
+    } catch (e) {}
+}
+
+['input','change'].forEach((evt) => {
+    document.getElementById('lessonForm').addEventListener(evt, saveDraft);
+});
+
+document.addEventListener('DOMContentLoaded', restoreDraft);
+
 function toggleLessonType() {
     let type = document.querySelector('select[name="lesson_type"]').value;
     document.getElementById('videoSection').style.display =

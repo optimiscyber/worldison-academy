@@ -31,11 +31,12 @@ if (!file_exists($filepath)) {
 }
 
 $filename = basename($filepath);
+$inline = !empty($_GET['inline']);
 
-// Force download
+// Allow preview in browser when requested; otherwise force download
 header('Content-Description: File Transfer');
 header('Content-Type: application/pdf');
-header('Content-Disposition: attachment; filename="' . $filename . '"');
+header('Content-Disposition: ' . ($inline ? 'inline' : 'attachment') . '; filename="' . $filename . '"');
 header('Expires: 0');
 header('Cache-Control: must-revalidate');
 header('Pragma: public');

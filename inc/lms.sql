@@ -103,11 +103,15 @@ CREATE TABLE lessons (
 
     title VARCHAR(255) NOT NULL,
     slug VARCHAR(255) UNIQUE,
+    seo_title VARCHAR(255) DEFAULT NULL,
+    meta_description VARCHAR(255) DEFAULT NULL,
 
     content LONGTEXT,
+    content_format VARCHAR(20) DEFAULT 'html',
+    reading_time INT DEFAULT 0,
     video_url VARCHAR(500),
 
-    description TEXT,
+    description LONGTEXT,
     duration VARCHAR(50),
 
     lesson_type ENUM('text','video','mixed') DEFAULT 'mixed',
